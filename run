@@ -130,6 +130,10 @@ AllowedIPs = 0.0.0.0/0
 Endpoint = $SERVER_IP:$SERVER_PORT
 CONFF
 
+if [ $KEEPALIVE -gt 0 ]; then
+    echo "PersistentKeepalive = $KEEPALIVE" >> "$WGCONF"
+fi
+
 #Remove any lingering setup iptables rules
 iptables -F OUTPUT
 iptables -F INPUT

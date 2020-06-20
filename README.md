@@ -22,7 +22,10 @@ PIA password
 Whether to allow input/output traffic to the Docker network. Set to 1 to enable. Defaults to 0 if not specified.
 * LOCAL_NETWORK=192.168.1.1/24
 
-Whether to allow input/output traffic to the LAN. LAN traffic is blocked if not specified.
+Whether to allow input/output traffic to the LAN. LAN traffic is blocked by default if not specified.
+
+* KEEPALIVE = 25
+If defined, PersistentKeepalive will be set to this in the Wireguard config.
 
 ## Notes
 * PIA doesn't support Wireguard connections outside of their official app at this stage (June 2020), so use at your own risk.

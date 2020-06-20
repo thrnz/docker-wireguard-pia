@@ -17,6 +17,8 @@ ENV ALLOW_DOCKER=0
 
 ENV LOCAL_NETWORK=
 
+ENV KEEPALIVE=0
+
 # Add main work dir to PATH
 WORKDIR /scripts
 

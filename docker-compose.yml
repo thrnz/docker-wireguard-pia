@@ -16,6 +16,7 @@ services:
             - LOC=swiss
             - USER=p0000000
             - PASS=xxxxxxxxxxxxxxxx
+            #- KEEPALIVE=25
 
 volumes:
     pia:
