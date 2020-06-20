@@ -3,7 +3,7 @@ services:
     vpn:
         networks:
             wg-vpn:
-        build: .
+        image: thrnz/docker-wireguard-pia
         volumes:
             - pia:/pia
         privileged: true
