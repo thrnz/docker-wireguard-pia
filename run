@@ -1,0 +1,175 @@
+#!/bin/bash
+
+#Block everything by default
+ip6tables -P OUTPUT DROP &> /dev/null
+ip6tables -P INPUT DROP &> /dev/null
+ip6tables -P FORWARD DROP &> /dev/null
+iptables -P OUTPUT DROP &> /dev/null
+iptables -P INPUT DROP &> /dev/null
+iptables -P FORWARD DROP &> /dev/null
+
+#Genereate a valid Wireguard conf for use with PIA
+
+#Temporarily allow DNS queries
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+
+CONFIGDIR="/pia"
+TOKENFILE="$CONFIGDIR/.token"
+DATAFILE="$CONFIGDIR/data.json"
+
+if [ -z "$TOK" ] && [ -r "$TOKENFILE" ]
+then
+    TOK=$(< "$TOKENFILE")
+fi
+
+#https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
+#PIA desktop client redownloads server list on launch and then every 10mins.
+#May as well mimic that behavior.
+if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
+    #The response contains a signature that we won't bother checking. We'll assume https is enough.
+    #The json response is just the first line, so cut the rest off
+    echo "Fetching PIA server list"
+    IP=$(getent hosts www.privateinternetaccess.com | awk '{ print $1 }' | head -1)
+    iptables -A OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
+    curl --silent --resolve "www.privateinternetaccess.com:443:$IP" \
+        "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha" | head -1 > "$DATAFILE"
+    iptables -D OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
+fi
+if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
+    echo "Location not found!"
+    echo "Options are:"
+    jq keys "$DATAFILE"
+    exit 1
+fi
+if [ -z "$TOK" ]; then
+    if [ -z "$PASS" ]; then
+        echo "PIA password not set. Unable to retrieve new auth token." 
+        exit 1
+    fi
+    if [ -z "$USER" ]; then
+        echo "PIA username not set. Unable to retrieve new auth token." 
+        exit 1
+    fi
+    IP=$(getent hosts www.privateinternetaccess.com | awk '{ print $1 }' | head -1)
+    iptables -A OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
+    TOK=$(curl --silent --request POST \
+        --header "Content-Type: application/json" \
+        --resolve "www.privateinternetaccess.com:443:$IP" \
+        --data "{\"username\":\"$USER\",\"password\":\"$PASS\"}" \
+        "https://www.privateinternetaccess.com/api/client/v2/token" | jq -r '.token')
+    iptables -D OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
+
+    echo "got token: $TOK"
+fi
+
+
+if [ -z "$TOK" ]; then
+  echo "Failed to authenticate with privateinternetaccess"
+  exit 1
+fi
+touch "$TOKENFILE"
+chmod 600 "$TOKENFILE"
+echo "$TOK" > "$TOKENFILE"
+WG_URL=$(jq -r ".$LOC.wireguard.host" "$DATAFILE")
+WG_SERIAL=$(jq -r ".$LOC.wireguard.serial" "$DATAFILE")
+WG_HOST=$(cut -d: -f1 <<< "$WG_URL")
+WG_PORT=$(cut -d: -f2 <<< "$WG_URL")
+WG_DNS=$(jq -r ".$LOC.dns" "$DATAFILE")
+
+if [ -z "$WG_URL" ]; then
+  echo "Wireguard not supported in the selected region ($LOC)"
+  cat $DATAFILE
+  exit 1
+fi
+
+CLIENT_PRIVATE_KEY="$(wg genkey)"
+CLIENT_PUBLIC_KEY=$(wg pubkey <<< "$CLIENT_PRIVATE_KEY")
+
+#https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
+iptables -A OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
+echo "Registering public key with PIA endpoint $LOC - $WG_DNS ($WG_HOST)"
+ADDKEY_RESPONSE=$(curl --get --silent \
+    --data-urlencode "pubkey=$CLIENT_PUBLIC_KEY" \
+    --data-urlencode "pt=$TOK" \
+    --cacert /rsa_4096.crt \
+    --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
+    "https://$WG_SERIAL:$WG_PORT/addKey")
+iptables -D OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
+
+if [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" != "OK" ]
+then
+    echo "WG key registration failed - bad token?"
+    echo "If you get an auth error, consider deleting .token and getting a new one"
+    exit 1
+fi
+
+PEER_IP="$(echo $ADDKEY_RESPONSE | jq -r .peer_ip)"
+SERVER_PUBLIC_KEY="$(echo $ADDKEY_RESPONSE | jq -r .server_key)"
+SERVER_IP="$(echo $ADDKEY_RESPONSE | jq -r .server_ip)"
+SERVER_PORT="$(echo $ADDKEY_RESPONSE | jq -r .server_port)"
+
+WGCONF="/etc/wireguard/wg0.conf"
+echo "Generating $WGCONF"
+
+cat <<CONFF > "$WGCONF"
+#$WG_DNS
+[Interface]
+PrivateKey = $CLIENT_PRIVATE_KEY
+Address = $PEER_IP
+PreUp = /scripts/pre-up.sh
+PostUp = /scripts/post-up.sh && iptables -A OUTPUT -o %i -j ACCEPT && iptables -I OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
+PreDown = /scripts/post-up.sh && iptables -D OUTPUT -o %i -j ACCEPT && iptables -D OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
+DNS = $(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
+
+[Peer]
+PublicKey = $SERVER_PUBLIC_KEY
+AllowedIPs = 0.0.0.0/0
+Endpoint = $SERVER_IP:$SERVER_PORT
+CONFF
+
+#Remove any lingering setup iptables rules
+iptables -F OUTPUT
+iptables -F INPUT
+
+echo "Success!"
+
+# Find a Wireguard interface
+interfaces=`find /etc/wireguard -type f`
+if [[ -z $interfaces ]]; then
+    echo "$(date): Interface not found in /etc/wireguard" >&2
+    exit 1
+fi
+
+
+for interface in $interfaces; do
+    echo "$(date): Starting Wireguard $interface"
+    wg-quick up $interface
+done
+
+# Add masquerade rule for NAT'ing VPN traffic bound for the Internet
+
+if [[ $IPTABLES_MASQ -eq 1 ]]; then
+    echo "Adding iptables NAT rule"
+    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+fi
+
+# Handle shutdown behavior
+finish () {
+    echo "$(date): Shutting down Wireguard"
+    for interface in $interfaces; do
+        wg-quick down $interface
+    done
+    if [[ $IPTABLES_MASQ -eq 1 ]]; then
+        iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+    fi
+
+    exit 0
+}
+
+trap finish SIGTERM SIGINT SIGQUIT
+
+sleep infinity &
+wait $!
