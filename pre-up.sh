@@ -29,7 +29,7 @@ if [ $ALLOW_DOCKER -eq 1 ] ; then
 fi
 
 #Set env var LOCAL_NETWORK=192.168.1.1/24 to allow LAN input/output
-if [ $LOCAL_NETWORK -eq 1 ]; then
+if [ ! -z $LOCAL_NETWORK ]; then
     iptables -A OUTPUT -o eth0 --destination $LOCAL_NETWORK -j ACCEPT
     iptables -A INPUT -i eth0 --source $LOCAL_NETWORK -j ACCEPT
 fi
