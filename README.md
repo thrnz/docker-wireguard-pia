@@ -23,8 +23,8 @@ Whether to allow input/output traffic to the Docker network. Set to 1 to enable.
 * LOCAL_NETWORK=192.168.1.1/24
 
 Whether to allow input/output traffic to the LAN. LAN traffic is blocked by default if not specified.
-
 * KEEPALIVE = 25
+
 If defined, PersistentKeepalive will be set to this in the Wireguard config.
 
 ## Notes
