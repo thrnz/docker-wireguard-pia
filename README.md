@@ -9,14 +9,19 @@ A Docker container for using Wireguard with PIA.
 ## Config
 The following ENV vars are used:
 * LOC=swiss
+
 Set this to the desired PIA server (eg. 'us_california'). A complete list can be found [here](https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha).
 * USER=p00000000
+
 PIA username
 * PASS=xxxxxxxx
+
 PIA password
-* ALLOW_DOCKER=1
+* ALLOW_DOCKER=0/1
+
 Whether to allow input/output traffic to the Docker network. Set to 1 to enable. Defaults to 0 if not specified.
 * LOCAL_NETWORK=192.168.1.1/24
+
 Whether to allow input/output traffic to the LAN. LAN traffic is blocked if not specified.
 
 ## Notes
