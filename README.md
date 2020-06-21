@@ -26,6 +26,9 @@ Whether to allow input/output traffic to the LAN. LAN traffic is blocked by defa
 * KEEPALIVE = 25
 
 If defined, PersistentKeepalive will be set to this in the Wireguard config.
+* VPNDNS = 8.8.8.8, 8.8.4.4
+
+Use these DNS servers once the VPN comes up. Defaults to PIA's DNS servers if not specified.
 
 ## Notes
 * PIA doesn't support Wireguard connections outside of their official app at this stage (June 2020), so use at your own risk.

@@ -11,12 +11,13 @@ services:
             - NET_ADMIN
             - SYS_MODULE
         environment:
-            #- LOCAL_NETWORK=192.168.69.0/24
+            #- LOCAL_NETWORK=192.168.1.1/24
             #- ALLOW_DOCKER=1
             - LOC=swiss
             - USER=p0000000
             - PASS=xxxxxxxxxxxxxxxx
             #- KEEPALIVE=25
+            #- VPNDNS=8.8.8.8,8.8.4.4
 
 volumes:
     pia:

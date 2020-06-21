@@ -17,7 +17,11 @@ ENV ALLOW_DOCKER=0
 
 ENV LOCAL_NETWORK=
 
+#Don't use PersistentKeepalive by default. 
 ENV KEEPALIVE=0
+
+#Use PIA DNS by default. Set this to override.
+ENV VPNDNS=
 
 # Add main work dir to PATH
 WORKDIR /scripts

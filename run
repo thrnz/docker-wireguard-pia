@@ -114,6 +114,13 @@ SERVER_PORT="$(echo $ADDKEY_RESPONSE | jq -r .server_port)"
 WGCONF="/etc/wireguard/wg0.conf"
 echo "Generating $WGCONF"
 
+if [ -z $VPNDNS ]; then
+    VPNDNS=$(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
+    echo "Using PIA DNS servers: $VPNDNS"
+else
+    echo "Using custom DNS servers: $VPNDNS"
+fi
+
 cat <<CONFF > "$WGCONF"
 #$WG_DNS
 [Interface]
@@ -122,7 +129,7 @@ Address = $PEER_IP
 PreUp = /scripts/pre-up.sh
 PostUp = /scripts/post-up.sh && iptables -A OUTPUT -o %i -j ACCEPT && iptables -I OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
 PreDown = /scripts/post-up.sh && iptables -D OUTPUT -o %i -j ACCEPT && iptables -D OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
-DNS = $(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
+DNS = $VPNDNS
 
 [Peer]
 PublicKey = $SERVER_PUBLIC_KEY
