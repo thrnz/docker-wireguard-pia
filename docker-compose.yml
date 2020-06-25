@@ -6,6 +6,8 @@ services:
         image: thrnz/docker-wireguard-pia
         volumes:
             - pia:/pia
+            # Forwarded port is dumped to /pia-shared/port.dat for potential use in other conainers
+            #- pia-shared:/pia-shared
         privileged: true
         cap_add:
             - NET_ADMIN
@@ -18,9 +20,12 @@ services:
             - PASS=xxxxxxxxxxxxxxxx
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
+            #- USEMODERN=1
+            #- PORT_FORWARDING=0
 
 volumes:
     pia:
+    pia-shared:
     
 networks:
     wg-vpn:

@@ -29,6 +29,12 @@ If defined, PersistentKeepalive will be set to this in the Wireguard config.
 * VPNDNS = 8.8.8.8, 8.8.4.4
 
 Use these DNS servers in the Wireguard config. Defaults to PIA's DNS servers if not specified.
+* USEMODERN=0/1
+
+Connect to PIA's 'next gen' network. This is required for port forwarding using Wireguard. Defaults to 0 - use legacy network. See [here](https://serverlist.piaservers.net/vpninfo/servers/new) for a list of legacy servers.
+* PORT_FORWARDING=0/1
+
+Whether to enable port forwarding. Requires USEMODERN=1 and a supported server. Defaults to 0 if not specified. The forwarded port is dumped to /pia-shared/port.dat for access by other containers.
 
 ## Notes
 * PIA doesn't support Wireguard connections outside of their official app at this stage (June 2020), so use at your own risk.

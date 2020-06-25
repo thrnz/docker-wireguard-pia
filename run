@@ -8,8 +8,6 @@ iptables -P OUTPUT DROP &> /dev/null
 iptables -P INPUT DROP &> /dev/null
 iptables -P FORWARD DROP &> /dev/null
 
-#Genereate a valid Wireguard conf for use with PIA
-
 #Temporarily allow DNS queries
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A INPUT -i lo -j ACCEPT
@@ -20,115 +18,135 @@ CONFIGDIR="/pia"
 TOKENFILE="$CONFIGDIR/.token"
 DATAFILE="$CONFIGDIR/data.json"
 
-if [ -z "$TOK" ] && [ -r "$TOKENFILE" ]
-then
-    TOK=$(< "$TOKENFILE")
-fi
+[ $USEMODERN -eq 1 ] && DATAFILE="$CONFIGDIR/data_modern.json"
 
-#https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
-#PIA desktop client redownloads server list on launch and then every 10mins.
-#May as well mimic that behavior.
-if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
-    #The response contains a signature that we won't bother checking. We'll assume https is enough.
-    #The json response is just the first line, so cut the rest off
-    echo "Fetching PIA server list"
-    IP=$(getent hosts www.privateinternetaccess.com | awk '{ print $1 }' | head -1)
-    iptables -A OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
-    curl --silent --resolve "www.privateinternetaccess.com:443:$IP" \
-        "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha" | head -1 > "$DATAFILE"
-    iptables -D OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
-fi
-if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
-    echo "Location not found!"
-    echo "Options are:"
-    jq keys "$DATAFILE"
-    exit 1
-fi
-if [ -z "$TOK" ]; then
-    if [ -z "$PASS" ]; then
-        echo "PIA password not set. Unable to retrieve new auth token." 
-        exit 1
-    fi
-    if [ -z "$USER" ]; then
-        echo "PIA username not set. Unable to retrieve new auth token." 
-        exit 1
-    fi
-    IP=$(getent hosts www.privateinternetaccess.com | awk '{ print $1 }' | head -1)
-    iptables -A OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
-    TOK=$(curl --silent --request POST \
+# Allow an individual host temporarily:
+# tmp_allow_host HOST PORT
+tmp_allow_host () {
+    IP=$(getent hosts $1 | awk '{ print $1 }' | head -1)
+    iptables -A OUTPUT -p tcp --dport $2 --destination $IP  -j ACCEPT
+}
+
+# All done. Sleep and wait for termination.
+now_sleep () {
+    sleep infinity &
+    wait $!
+}
+
+# Get a new auth token
+# Unsure how long an auth token will remain valid. It'll need manually deleting if it expires.
+get_auth_token () {
+    [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && exit 1
+    [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && exit 1
+    echo "$(date): Getting new auth token"
+    tmp_allow_host "www.privateinternetaccess.com" 443
+    TOK=$(curl --silent --show-error --request POST \
         --header "Content-Type: application/json" \
         --resolve "www.privateinternetaccess.com:443:$IP" \
         --data "{\"username\":\"$USER\",\"password\":\"$PASS\"}" \
         "https://www.privateinternetaccess.com/api/client/v2/token" | jq -r '.token')
-    iptables -D OUTPUT -p tcp --dport 443 --destination $IP  -j ACCEPT
+    [ -z "$TOK" ] && echo "$(date): Failed to acquire new auth token" && exit 1
+    touch "$TOKENFILE"
+    chmod 600 "$TOKENFILE"
+    echo "$TOK" > "$TOKENFILE"
+}
 
-    echo "got token: $TOK"
-fi
+get_servers () {
+    if [ $USEMODERN -eq 1 ]; then
+        #https://github.com/pia-foss/mobile-common-regions/blob/master/regions/src/commonMain/kotlin/com/privateinternetaccess/common/regions/internals/RegionsCommon.kt#L23
+        if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
+            # The response contains a signature that we won't bother checking. We'll assume https is enough.
+            # The json response is just the first line, so cut the rest off
+            echo "$(date): Fetching modern PIA server list"
+            tmp_allow_host "serverlist.piaservers.net" 443
+            curl --silent --show-error --resolve "serverlist.piaservers.net:443:$IP" \
+                "https://serverlist.piaservers.net/vpninfo/servers/new" | head -1 > "$DATAFILE"
+        fi
+        if [ -z "$LOC" ] || [ "$(jq '.regions | .[] | select(.id=="$loc")')" == "null" ]; then
+            echo "$(date): Location not found!"
+            echo "$(date): Options are:"
+            jq '.regions | .[] | .id' "$DATAFILE"
+            exit 1
+        fi
+        # Some locations have multiple servers available. Just use the first in the list.
+        WG_SERIAL=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .[0].cn' $DATAFILE)
+        WG_HOST=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .[0].ip' $DATAFILE)
+        WG_PORT=$(jq -r '.groups.wg | .[0] | .ports | .[0]' $DATAFILE)
+        WG_DNS=$WG_SERIAL
 
+        [ $(jq -r '.regions | .[] | select(.id=="'$LOC'") | .port_forward' $DATAFILE) == "true" ] && PORT_FORWARD_AVAIL=1
 
-if [ -z "$TOK" ]; then
-  echo "Failed to authenticate with privateinternetaccess"
-  exit 1
-fi
-touch "$TOKENFILE"
-chmod 600 "$TOKENFILE"
-echo "$TOK" > "$TOKENFILE"
-WG_URL=$(jq -r ".$LOC.wireguard.host" "$DATAFILE")
-WG_SERIAL=$(jq -r ".$LOC.wireguard.serial" "$DATAFILE")
-WG_HOST=$(cut -d: -f1 <<< "$WG_URL")
-WG_PORT=$(cut -d: -f2 <<< "$WG_URL")
-WG_DNS=$(jq -r ".$LOC.dns" "$DATAFILE")
+        [ -z "$WG_HOST" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && exit 1
 
-if [ -z "$WG_URL" ]; then
-  echo "Wireguard not supported in the selected region ($LOC)"
-  cat $DATAFILE
-  exit 1
-fi
+    else
+        #https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
+        #PIA desktop client redownloads server list on launch and then every 10mins.
+        #May as well mimic that behavior.
+        if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
+            #The response contains a signature that we won't bother checking. We'll assume https is enough.
+            #The json response is just the first line, so cut the rest off
+            echo "$(date): Fetching legacy PIA server list"
+            tmp_allow_host "www.privateinternetaccess.com" 443
+            curl --silent --show-error --resolve "www.privateinternetaccess.com:443:$IP" \
+                "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha" | head -1 > "$DATAFILE"
+        fi
+        if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
+            echo "$(date): Location not found!"
+            echo "$(date): Options are:"
+            jq keys "$DATAFILE"
+            exit 1
+        fi
 
-CLIENT_PRIVATE_KEY="$(wg genkey)"
-CLIENT_PUBLIC_KEY=$(wg pubkey <<< "$CLIENT_PRIVATE_KEY")
+        WG_URL=$(jq -r ".$LOC.wireguard.host" "$DATAFILE")
+        WG_SERIAL=$(jq -r ".$LOC.wireguard.serial" "$DATAFILE")
+        WG_HOST=$(cut -d: -f1 <<< "$WG_URL")
+        WG_PORT=$(cut -d: -f2 <<< "$WG_URL")
+        WG_DNS=$(jq -r ".$LOC.dns" "$DATAFILE")
 
-#https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
-iptables -A OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
-echo "Registering public key with PIA endpoint $LOC - $WG_DNS ($WG_HOST)"
-ADDKEY_RESPONSE=$(curl --get --silent \
-    --data-urlencode "pubkey=$CLIENT_PUBLIC_KEY" \
-    --data-urlencode "pt=$TOK" \
-    --cacert /rsa_4096.crt \
-    --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
-    "https://$WG_SERIAL:$WG_PORT/addKey")
-iptables -D OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
+        [ -z "$WG_URL" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && exit 1
+    fi
+}
 
-if [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" != "OK" ]
-then
-    echo "WG key registration failed - bad token?"
-    echo "If you get an auth error, consider deleting .token and getting a new one"
-    exit 1
-fi
+get_wgconf () {
+    CLIENT_PRIVATE_KEY="$(wg genkey)"
+    CLIENT_PUBLIC_KEY=$(wg pubkey <<< "$CLIENT_PRIVATE_KEY")
 
-PEER_IP="$(echo $ADDKEY_RESPONSE | jq -r .peer_ip)"
-SERVER_PUBLIC_KEY="$(echo $ADDKEY_RESPONSE | jq -r .server_key)"
-SERVER_IP="$(echo $ADDKEY_RESPONSE | jq -r .server_ip)"
-SERVER_PORT="$(echo $ADDKEY_RESPONSE | jq -r .server_port)"
+    #https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
+    iptables -A OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
+    echo "$(date): Registering public key with PIA endpoint $LOC - $WG_DNS ($WG_HOST)"
+    ADDKEY_RESPONSE=$(curl --get --silent \
+        --data-urlencode "pubkey=$CLIENT_PUBLIC_KEY" \
+        --data-urlencode "pt=$TOK" \
+        --cacert /rsa_4096.crt \
+        --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
+        "https://$WG_SERIAL:$WG_PORT/addKey")
 
-WGCONF="/etc/wireguard/wg0.conf"
-echo "Generating $WGCONF"
+    [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" != "OK" ] && echo "$(date): WG key registration failed" && echo $ADDKEY_RESPONSE && exit 1
 
-if [ -z $VPNDNS ]; then
-    VPNDNS=$(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
-    echo "Using PIA DNS servers: $VPNDNS"
-else
-    echo "Using custom DNS servers: $VPNDNS"
-fi
+    PEER_IP="$(echo $ADDKEY_RESPONSE | jq -r .peer_ip)"
+    SERVER_PUBLIC_KEY="$(echo $ADDKEY_RESPONSE | jq -r .server_key)"
+    SERVER_IP="$(echo $ADDKEY_RESPONSE | jq -r .server_ip)"
+    SERVER_PORT="$(echo $ADDKEY_RESPONSE | jq -r .server_port)"
 
-cat <<CONFF > "$WGCONF"
+    WGCONF="/etc/wireguard/wg0.conf"
+    echo "$(date): Generating $WGCONF"
+
+    if [ -z $VPNDNS ]; then
+        VPNDNS=$(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
+        echo "$(date): Using PIA DNS servers: $VPNDNS"
+    else
+        echo "$(date): Using custom DNS servers: $VPNDNS"
+    fi
+
+    cat <<CONFF > "$WGCONF"
 #$WG_DNS
 [Interface]
 PrivateKey = $CLIENT_PRIVATE_KEY
 Address = $PEER_IP
 PreUp = /scripts/pre-up.sh
 PostUp = /scripts/post-up.sh && iptables -A OUTPUT -o %i -j ACCEPT && iptables -I OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
-PreDown = /scripts/post-up.sh && iptables -D OUTPUT -o %i -j ACCEPT && iptables -D OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
+PreDown = /scripts/pre-down.sh && iptables -D OUTPUT -o %i -j ACCEPT && iptables -D OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
+PostDown = /scripts/post-down.sh
 DNS = $VPNDNS
 
 [Peer]
@@ -137,15 +155,22 @@ AllowedIPs = 0.0.0.0/0
 Endpoint = $SERVER_IP:$SERVER_PORT
 CONFF
 
-if [ $KEEPALIVE -gt 0 ]; then
-    echo "PersistentKeepalive = $KEEPALIVE" >> "$WGCONF"
-fi
+    [ $KEEPALIVE -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$WGCONF"
+}
+
+PORT_FORWARD_AVAIL=0
+
+[ -r "$TOKENFILE" ] && TOK=$(< "$TOKENFILE")
+[ -z "$TOK" ] && get_auth_token
+
+get_servers
+get_wgconf
 
 #Remove any lingering setup iptables rules
 iptables -F OUTPUT
 iptables -F INPUT
 
-echo "Success!"
+[ $PORT_FORWARD_AVAIL -eq 1 ] && echo "$(date): Port forwarding is available on this server"
 
 # Find a Wireguard interface
 interfaces=`find /etc/wireguard -type f`
@@ -153,7 +178,6 @@ if [[ -z $interfaces ]]; then
     echo "$(date): Interface not found in /etc/wireguard" >&2
     exit 1
 fi
-
 
 for interface in $interfaces; do
     echo "$(date): Starting Wireguard $interface"
@@ -163,7 +187,7 @@ done
 # Add masquerade rule for NAT'ing VPN traffic bound for the Internet
 
 if [[ $IPTABLES_MASQ -eq 1 ]]; then
-    echo "Adding iptables NAT rule"
+    echo "$(date): Adding iptables NAT rule"
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 fi
 
@@ -176,11 +200,70 @@ finish () {
     if [[ $IPTABLES_MASQ -eq 1 ]]; then
         iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
     fi
-
     exit 0
 }
 
 trap finish SIGTERM SIGINT SIGQUIT
 
-sleep infinity &
-wait $!
+# Port forwarding
+# https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/portforwardrequest.cpp#L59
+# No error handling at this stage, we simply stop trying when something unexpected happens.
+# Use curl's --retry* for possible transient network errors.
+# Further error handling/retry logic could be used if needed.
+# We should probabaly deal with PF_TOKEN_EXPIRY correctly, though this might not be needed as it seems to last 2 months at this stage
+bind_port () {
+    PF_BIND=$(curl --get --silent --show-error \
+        --retry 5 --retry-delay 15 \
+        --data-urlencode "payload=$PF_PAYLOAD" \
+        --data-urlencode "signature=$PF_GETSIGNATURE" \
+        --cacert /rsa_4096.crt \
+        --resolve "$WG_DNS:19999:$WG_HOST" \
+        "https://$WG_DNS:19999/bindPort")
+    if [ "$(echo $PF_BIND | jq -r .status)" != "OK" ]; then
+        echo "$(date): bindPort error"
+        echo $PF_BIND
+        now_sleep
+    fi
+}
+
+get_sig () {
+    PF_GETSIG=$(curl --get --silent --show-error \
+        --retry 5 --retry-delay 15 \
+        --data-urlencode "token=$TOK" \
+        --cacert /rsa_4096.crt \
+        --resolve "$WG_DNS:19999:$WG_HOST" \
+        "https://$WG_DNS:19999/getSignature")
+    if [ "$(echo $PF_GETSIG | jq -r .status)" != "OK" ]; then
+        echo "$(date): getSignature error"
+        echo $PF_GETSIG
+        now_sleep
+    fi
+    PF_PAYLOAD=$(echo $PF_GETSIG | jq -r .payload)
+    PF_GETSIGNATURE=$(echo $PF_GETSIG | jq -r .signature)
+    PF_PORT=$(echo $PF_PAYLOAD | base64 -d | jq -r .port)
+    PF_TOKEN_EXPIRY=$(echo $PF_PAYLOAD | base64 -d | jq -r .expires_at)
+}
+
+if [ $PORT_FORWARDING -eq 1 ] && [ $USEMODERN -eq 1 ] && [ $PORT_FORWARD_AVAIL -eq 1 ]; then
+    # Rebind every 15 mins
+    PF_BINDINTERVAL=$(( 15 * 60))
+    echo "$(date): Getting PF token"
+    get_sig
+    echo "$(date): Obtained token, bind port on this server"
+    echo "$(date): expires_at: $PF_TOKEN_EXPIRY"
+    bind_port
+    echo "$(date): Server accepted PF bind"
+    echo "$(date): Forwarding on port $PF_PORT"
+    iptables -A INPUT -p tcp -i wg0 --dport $PF_PORT -j ACCEPT
+    iptables -A INPUT -p udp -i wg0 --dport $PF_PORT -j ACCEPT
+    # Dump port here for possible later use in another container
+    echo $PF_PORT > /pia-shared/port.dat
+    while true; do
+        sleep $PF_BINDINTERVAL &
+        wait $!
+        bind_port
+        echo "$(date): Server accepted PF bind"
+    done
+fi
+
+now_sleep
