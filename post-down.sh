@@ -1,5 +1,7 @@
 #!/bin/bash
 
+iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
 #Set env var ALLOW_DOCKER=1 to allow docker network input/output
 if [ $ALLOW_DOCKER -eq 1 ] ; then 
     docker_network="$(ip -o addr show dev eth0|

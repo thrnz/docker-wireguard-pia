@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#Block everything by default
+# Block everything by default
 ip6tables -P OUTPUT DROP &> /dev/null
 ip6tables -P INPUT DROP &> /dev/null
 ip6tables -P FORWARD DROP &> /dev/null
@@ -8,7 +8,7 @@ iptables -P OUTPUT DROP &> /dev/null
 iptables -P INPUT DROP &> /dev/null
 iptables -P FORWARD DROP &> /dev/null
 
-#Temporarily allow DNS queries
+# Temporarily allow DNS queries
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -17,6 +17,9 @@ iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 CONFIGDIR="/pia"
 TOKENFILE="$CONFIGDIR/.token"
 DATAFILE="$CONFIGDIR/data.json"
+
+SHAREDIR="/pia-shared"
+PORTFILE="$SHAREDIR/port.dat"
 
 [ $USEMODERN -eq 1 ] && DATAFILE="$CONFIGDIR/data_modern.json"
 
@@ -53,7 +56,7 @@ get_auth_token () {
 
 get_servers () {
     if [ $USEMODERN -eq 1 ]; then
-        #https://github.com/pia-foss/mobile-common-regions/blob/master/regions/src/commonMain/kotlin/com/privateinternetaccess/common/regions/internals/RegionsCommon.kt#L23
+        # https://github.com/pia-foss/mobile-common-regions/blob/master/regions/src/commonMain/kotlin/com/privateinternetaccess/common/regions/internals/RegionsCommon.kt#L23
         if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
             # The response contains a signature that we won't bother checking. We'll assume https is enough.
             # The json response is just the first line, so cut the rest off
@@ -68,9 +71,11 @@ get_servers () {
             jq '.regions | .[] | .id' "$DATAFILE"
             exit 1
         fi
-        # Some locations have multiple servers available. Just use the first in the list.
-        WG_SERIAL=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .[0].cn' $DATAFILE)
-        WG_HOST=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .[0].ip' $DATAFILE)
+        # Some locations have multiple servers available. Pick a random one.
+        TOTALSERVERS=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | length' $DATAFILE)
+        SERVERINDEX=$(( $RANDOM % $TOTALSERVERS))
+        WG_SERIAL=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].cn' $DATAFILE)
+        WG_HOST=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].ip' $DATAFILE)
         WG_PORT=$(jq -r '.groups.wg | .[0] | .ports | .[0]' $DATAFILE)
         WG_DNS=$WG_SERIAL
 
@@ -79,12 +84,12 @@ get_servers () {
         [ -z "$WG_HOST" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && exit 1
 
     else
-        #https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
-        #PIA desktop client redownloads server list on launch and then every 10mins.
-        #May as well mimic that behavior.
+        # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
+        # PIA desktop client redownloads server list on launch and then every 10mins.
+        # May as well mimic that behavior.
         if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
-            #The response contains a signature that we won't bother checking. We'll assume https is enough.
-            #The json response is just the first line, so cut the rest off
+            # The response contains a signature that we won't bother checking. We'll assume https is enough.
+            # The json response is just the first line, so cut the rest off
             echo "$(date): Fetching legacy PIA server list"
             tmp_allow_host "www.privateinternetaccess.com" 443
             curl --silent --show-error --resolve "www.privateinternetaccess.com:443:$IP" \
@@ -111,7 +116,7 @@ get_wgconf () {
     CLIENT_PRIVATE_KEY="$(wg genkey)"
     CLIENT_PUBLIC_KEY=$(wg pubkey <<< "$CLIENT_PRIVATE_KEY")
 
-    #https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
+    # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
     iptables -A OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
     echo "$(date): Registering public key with PIA endpoint $LOC - $WG_DNS ($WG_HOST)"
     ADDKEY_RESPONSE=$(curl --get --silent \
@@ -160,46 +165,29 @@ CONFF
 
 PORT_FORWARD_AVAIL=0
 
+[ -w "$PORTFILE" ] && rm "$PORTFILE"
+
 [ -r "$TOKENFILE" ] && TOK=$(< "$TOKENFILE")
 [ -z "$TOK" ] && get_auth_token
 
 get_servers
 get_wgconf
 
-#Remove any lingering setup iptables rules
+# Remove any lingering setup iptables rules
 iptables -F OUTPUT
 iptables -F INPUT
 
 [ $PORT_FORWARD_AVAIL -eq 1 ] && echo "$(date): Port forwarding is available on this server"
 
-# Find a Wireguard interface
-interfaces=`find /etc/wireguard -type f`
-if [[ -z $interfaces ]]; then
-    echo "$(date): Interface not found in /etc/wireguard" >&2
-    exit 1
-fi
-
-for interface in $interfaces; do
-    echo "$(date): Starting Wireguard $interface"
-    wg-quick up $interface
-done
-
-# Add masquerade rule for NAT'ing VPN traffic bound for the Internet
-
-if [[ $IPTABLES_MASQ -eq 1 ]]; then
-    echo "$(date): Adding iptables NAT rule"
-    iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-fi
+# Bring up Wireguard interface
+echo "$(date): Starting Wireguard wg0"
+wg-quick up wg0
 
 # Handle shutdown behavior
 finish () {
     echo "$(date): Shutting down Wireguard"
-    for interface in $interfaces; do
-        wg-quick down $interface
-    done
-    if [[ $IPTABLES_MASQ -eq 1 ]]; then
-        iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
-    fi
+    [ -w "$PORTFILE" ] && rm "$PORTFILE"
+    wg-quick down wg0
     exit 0
 }
 
@@ -210,7 +198,7 @@ trap finish SIGTERM SIGINT SIGQUIT
 # No error handling at this stage, we simply stop trying when something unexpected happens.
 # Use curl's --retry* for possible transient network errors.
 # Further error handling/retry logic could be used if needed.
-# We should probabaly deal with PF_TOKEN_EXPIRY correctly, though this might not be needed as it seems to last 2 months at this stage
+# We should probably deal with PF_TOKEN_EXPIRY correctly, though this might not be needed as it seems to last 2 months at this stage
 bind_port () {
     PF_BIND=$(curl --get --silent --show-error \
         --retry 5 --retry-delay 15 \
@@ -257,12 +245,11 @@ if [ $PORT_FORWARDING -eq 1 ] && [ $USEMODERN -eq 1 ] && [ $PORT_FORWARD_AVAIL -
     iptables -A INPUT -p tcp -i wg0 --dport $PF_PORT -j ACCEPT
     iptables -A INPUT -p udp -i wg0 --dport $PF_PORT -j ACCEPT
     # Dump port here for possible later use in another container
-    echo $PF_PORT > /pia-shared/port.dat
+    echo $PF_PORT > "$PORTFILE"
     while true; do
         sleep $PF_BINDINTERVAL &
         wait $!
         bind_port
-        echo "$(date): Server accepted PF bind"
     done
 fi
 

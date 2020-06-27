@@ -34,4 +34,6 @@ if [ ! -z $LOCAL_NETWORK ]; then
     iptables -A INPUT -i eth0 --source $LOCAL_NETWORK -j ACCEPT
 fi
 
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
 exit 0
