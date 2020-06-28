@@ -198,7 +198,6 @@ trap finish SIGTERM SIGINT SIGQUIT
 # No error handling at this stage, we simply stop trying when something unexpected happens.
 # Use curl's --retry* for possible transient network errors.
 # Further error handling/retry logic could be used if needed.
-# We should probably deal with PF_TOKEN_EXPIRY correctly, though this might not be needed as it seems to last 2 months at this stage
 bind_port () {
     PF_BIND=$(curl --get --silent --show-error \
         --retry 5 --retry-delay 15 \
@@ -229,24 +228,41 @@ get_sig () {
     PF_PAYLOAD=$(echo $PF_GETSIG | jq -r .payload)
     PF_GETSIGNATURE=$(echo $PF_GETSIG | jq -r .signature)
     PF_PORT=$(echo $PF_PAYLOAD | base64 -d | jq -r .port)
-    PF_TOKEN_EXPIRY=$(echo $PF_PAYLOAD | base64 -d | jq -r .expires_at)
+    PF_TOKEN_EXPIRY_RAW=$(echo $PF_PAYLOAD | base64 -d | jq -r .expires_at)
+    PF_TOKEN_EXPIRY=$(date -D %Y-%m-%dT%H:%M:%S --date="$PF_TOKEN_EXPIRY_RAW" +%s)
 }
 
 if [ $PORT_FORWARDING -eq 1 ] && [ $USEMODERN -eq 1 ] && [ $PORT_FORWARD_AVAIL -eq 1 ]; then
-    # Rebind every 15 mins
+    # Rebind every 15 mins (same as desktop app)
     PF_BINDINTERVAL=$(( 15 * 60))
-    echo "$(date): Getting PF token"
-    get_sig
-    echo "$(date): Obtained token, bind port on this server"
-    echo "$(date): expires_at: $PF_TOKEN_EXPIRY"
-    bind_port
-    echo "$(date): Server accepted PF bind"
-    echo "$(date): Forwarding on port $PF_PORT"
-    iptables -A INPUT -p tcp -i wg0 --dport $PF_PORT -j ACCEPT
-    iptables -A INPUT -p udp -i wg0 --dport $PF_PORT -j ACCEPT
-    # Dump port here for possible later use in another container
-    echo $PF_PORT > "$PORTFILE"
+    # Get a new token when the current one has less than this remaining
+    # Defaults to 7 days (same as desktop app)
+    PF_MINREUSE=$(( 60 * 60 * 24 * 7 ))
+    PF_REMAINING=0
+    PF_FIRSTRUN=1
     while true; do
+        PF_REMAINING=$((  $PF_TOKEN_EXPIRY - $(date +%s) ))
+        # Get a new token as the previous one will expire soon
+        if [ $PF_REMAINING -lt $PF_MINREUSE ]; then
+          if [ $PF_FIRSTRUN -ne 1 ]; then
+            iptables -D INPUT -p tcp -i wg0 --dport $PF_PORT -j ACCEPT
+            iptables -D INPUT -p udp -i wg0 --dport $PF_PORT -j ACCEPT
+            echo "$(date): PF token will expire soon. Getting new one."
+          else
+            echo "$(date): Getting PF token"
+            PF_FIRSTRUN=0
+          fi
+          get_sig
+          echo "$(date): Obtained PF token. Expires at $PF_TOKEN_EXPIRY_RAW"
+          bind_port
+          echo "$(date): Server accepted PF bind"
+          echo "$(date): Forwarding on port $PF_PORT"
+          # Allow incomming traffic on forwarded port
+          iptables -A INPUT -p tcp -i wg0 --dport $PF_PORT -j ACCEPT
+          iptables -A INPUT -p udp -i wg0 --dport $PF_PORT -j ACCEPT
+          # Dump port here for possible later use in another container
+          echo $PF_PORT > "$PORTFILE"
+        fi
         sleep $PF_BINDINTERVAL &
         wait $!
         bind_port
