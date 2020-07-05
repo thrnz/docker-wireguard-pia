@@ -65,14 +65,13 @@ get_servers () {
             curl --silent --show-error --resolve "serverlist.piaservers.net:443:$IP" \
                 "https://serverlist.piaservers.net/vpninfo/servers/new" | head -1 > "$DATAFILE"
         fi
-        if [ -z "$LOC" ] || [ "$(jq '.regions | .[] | select(.id=="$loc")')" == "null" ]; then
-            echo "$(date): Location not found!"
-            echo "$(date): Options are:"
+        # Some locations have multiple servers available. Pick a random one.
+        TOTALSERVERS=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | length' $DATAFILE)
+        if [ -z $TOTALSERVERS ] || [  $TOTALSERVERS -eq 0 ]; then
+            echo "$(date): No matching servers found. Valid servers are:"
             jq '.regions | .[] | .id' "$DATAFILE"
             exit 1
         fi
-        # Some locations have multiple servers available. Pick a random one.
-        TOTALSERVERS=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | length' $DATAFILE)
         SERVERINDEX=$(( $RANDOM % $TOTALSERVERS))
         WG_SERIAL=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].cn' $DATAFILE)
         WG_HOST=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].ip' $DATAFILE)
@@ -96,8 +95,7 @@ get_servers () {
                 "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha" | head -1 > "$DATAFILE"
         fi
         if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
-            echo "$(date): Location not found!"
-            echo "$(date): Options are:"
+            echo "$(date): No matching servers found. Valid servers are:"
             jq keys "$DATAFILE"
             exit 1
         fi
@@ -180,8 +178,13 @@ iptables -F INPUT
 [ $PORT_FORWARD_AVAIL -eq 1 ] && echo "$(date): Port forwarding is available on this server"
 
 # Bring up Wireguard interface
-echo "$(date): Starting Wireguard wg0"
+echo "$(date): Bringing up Wireguard interface wg0"
 wg-quick up wg0
+
+# Print out wg interface info
+echo
+wg
+echo
 
 # Handle shutdown behavior
 finish () {
