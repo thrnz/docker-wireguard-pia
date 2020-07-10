@@ -14,7 +14,8 @@ ENV ALLOW_DOCKER=0 \
     KEEPALIVE=0 \
     VPNDNS= \
     USEMODERN=0 \
-    PORT_FORWARDING=0
+    PORT_FORWARDING=0 \
+    EXIT_ON_FATAL=0
 
 # Get the PIA CA cert
 ADD https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt /rsa_4096.crt

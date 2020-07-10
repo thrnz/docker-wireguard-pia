@@ -21,6 +21,8 @@ DATAFILE="$CONFIGDIR/data.json"
 SHAREDIR="/pia-shared"
 PORTFILE="$SHAREDIR/port.dat"
 
+CURL_MAX_TIME=15
+
 [ $USEMODERN -eq 1 ] && DATAFILE="$CONFIGDIR/data_modern.json"
 
 # Allow an individual host temporarily:
@@ -32,23 +34,31 @@ tmp_allow_host () {
 
 # All done. Sleep and wait for termination.
 now_sleep () {
-    sleep infinity &
-    wait $!
+  sleep infinity &
+  wait $!
+}
+
+# An error with no recovery logic occured. Either go to sleep or exit.
+fatal_error () {
+  echo Fatal error
+  [ $EXIT_ON_FATAL -eq 1 ] && exit 1
+  sleep infinity &
+  wait $!
 }
 
 # Get a new auth token
 # Unsure how long an auth token will remain valid. It'll need manually deleting if it expires.
 get_auth_token () {
-    [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && exit 1
-    [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && exit 1
+    [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
+    [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
     echo "$(date): Getting new auth token"
     tmp_allow_host "www.privateinternetaccess.com" 443
-    TOK=$(curl --silent --show-error --request POST \
+    TOK=$(curl --silent --show-error --request --max-time $CURL_MAX_TIME POST \
         --header "Content-Type: application/json" \
         --resolve "www.privateinternetaccess.com:443:$IP" \
         --data "{\"username\":\"$USER\",\"password\":\"$PASS\"}" \
         "https://www.privateinternetaccess.com/api/client/v2/token" | jq -r '.token')
-    [ -z "$TOK" ] && echo "$(date): Failed to acquire new auth token" && exit 1
+    [ -z "$TOK" ] && echo "$(date): Failed to acquire new auth token" && fatal_error
     touch "$TOKENFILE"
     chmod 600 "$TOKENFILE"
     echo "$TOK" > "$TOKENFILE"
@@ -62,7 +72,7 @@ get_servers () {
             # The json response is just the first line, so cut the rest off
             echo "$(date): Fetching modern PIA server list"
             tmp_allow_host "serverlist.piaservers.net" 443
-            curl --silent --show-error --resolve "serverlist.piaservers.net:443:$IP" \
+            curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "serverlist.piaservers.net:443:$IP" \
                 "https://serverlist.piaservers.net/vpninfo/servers/new" | head -1 > "$DATAFILE"
         fi
         # Some locations have multiple servers available. Pick a random one.
@@ -70,7 +80,7 @@ get_servers () {
         if [ -z $TOTALSERVERS ] || [  $TOTALSERVERS -eq 0 ]; then
             echo "$(date): No matching servers found. Valid servers are:"
             jq '.regions | .[] | .id' "$DATAFILE"
-            exit 1
+            fatal_error
         fi
         SERVERINDEX=$(( $RANDOM % $TOTALSERVERS))
         WG_SERIAL=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].cn' $DATAFILE)
@@ -80,7 +90,7 @@ get_servers () {
 
         [ $(jq -r '.regions | .[] | select(.id=="'$LOC'") | .port_forward' $DATAFILE) == "true" ] && PORT_FORWARD_AVAIL=1
 
-        [ -z "$WG_HOST" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && exit 1
+        [ -z "$WG_HOST" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && fatal_error
 
     else
         # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
@@ -91,13 +101,13 @@ get_servers () {
             # The json response is just the first line, so cut the rest off
             echo "$(date): Fetching legacy PIA server list"
             tmp_allow_host "www.privateinternetaccess.com" 443
-            curl --silent --show-error --resolve "www.privateinternetaccess.com:443:$IP" \
+            curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "www.privateinternetaccess.com:443:$IP" \
                 "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha" | head -1 > "$DATAFILE"
         fi
         if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
             echo "$(date): No matching servers found. Valid servers are:"
             jq keys "$DATAFILE"
-            exit 1
+            fatal_error
         fi
 
         WG_URL=$(jq -r ".$LOC.wireguard.host" "$DATAFILE")
@@ -106,7 +116,7 @@ get_servers () {
         WG_PORT=$(cut -d: -f2 <<< "$WG_URL")
         WG_DNS=$(jq -r ".$LOC.dns" "$DATAFILE")
 
-        [ -z "$WG_URL" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && exit 1
+        [ -z "$WG_URL" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && fatal_error
     fi
 }
 
@@ -124,7 +134,7 @@ get_wgconf () {
         --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
         "https://$WG_SERIAL:$WG_PORT/addKey")
 
-    [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" != "OK" ] && echo "$(date): WG key registration failed" && echo $ADDKEY_RESPONSE && exit 1
+    [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" != "OK" ] && echo "$(date): WG key registration failed" && echo $ADDKEY_RESPONSE && fatal_error
 
     PEER_IP="$(echo $ADDKEY_RESPONSE | jq -r .peer_ip)"
     SERVER_PUBLIC_KEY="$(echo $ADDKEY_RESPONSE | jq -r .server_key)"
@@ -202,23 +212,23 @@ trap finish SIGTERM SIGINT SIGQUIT
 # Use curl's --retry* for possible transient network errors.
 # Further error handling/retry logic could be used if needed.
 bind_port () {
-    PF_BIND=$(curl --get --silent --show-error \
-        --retry 5 --retry-delay 15 \
-        --data-urlencode "payload=$PF_PAYLOAD" \
-        --data-urlencode "signature=$PF_GETSIGNATURE" \
-        --cacert /rsa_4096.crt \
-        --resolve "$WG_DNS:19999:$WG_HOST" \
-        "https://$WG_DNS:19999/bindPort")
+      PF_BIND=$(curl --get --silent --show-error \
+          --retry 5 --retry-delay 15 --max-time $CURL_MAX_TIME \
+          --data-urlencode "payload=$PF_PAYLOAD" \
+          --data-urlencode "signature=$PF_GETSIGNATURE" \
+          --cacert /rsa_4096.crt \
+          --resolve "$WG_DNS:19999:$WG_HOST" \
+          "https://$WG_DNS:19999/bindPort")
     if [ "$(echo $PF_BIND | jq -r .status)" != "OK" ]; then
         echo "$(date): bindPort error"
         echo $PF_BIND
-        now_sleep
+        fatal_error
     fi
 }
 
 get_sig () {
     PF_GETSIG=$(curl --get --silent --show-error \
-        --retry 5 --retry-delay 15 \
+        --retry 5 --retry-delay 15 --max-time $CURL_MAX_TIME \
         --data-urlencode "token=$TOK" \
         --cacert /rsa_4096.crt \
         --resolve "$WG_DNS:19999:$WG_HOST" \
@@ -226,7 +236,7 @@ get_sig () {
     if [ "$(echo $PF_GETSIG | jq -r .status)" != "OK" ]; then
         echo "$(date): getSignature error"
         echo $PF_GETSIG
-        now_sleep
+        fatal_error
     fi
     PF_PAYLOAD=$(echo $PF_GETSIG | jq -r .payload)
     PF_GETSIGNATURE=$(echo $PF_GETSIG | jq -r .signature)
