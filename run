@@ -25,6 +25,16 @@ CURL_MAX_TIME=15
 
 [ $USEMODERN -eq 1 ] && DATAFILE="$CONFIGDIR/data_modern.json"
 
+# Handle shutdown behavior
+finish () {
+    echo "$(date): Shutting down Wireguard"
+    [ -w "$PORTFILE" ] && rm "$PORTFILE"
+    wg-quick down wg0
+    exit 0
+}
+
+trap finish SIGTERM SIGINT SIGQUIT
+
 # Allow an individual host temporarily:
 # tmp_allow_host HOST PORT
 tmp_allow_host () {
@@ -77,9 +87,9 @@ get_servers () {
         fi
         # Some locations have multiple servers available. Pick a random one.
         TOTALSERVERS=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | length' $DATAFILE)
-        if [ -z $TOTALSERVERS ] || [  $TOTALSERVERS -eq 0 ]; then
+        if ! [[ "$TOTALSERVERS" =~ ^[0-9]+$ ]] || [ $TOTALSERVERS -eq 0 ] 2>/dev/null; then
             echo "$(date): No matching servers found. Valid servers are:"
-            jq '.regions | .[] | .id' "$DATAFILE"
+            jq -r '.regions | .[] | .id' "$DATAFILE"
             fatal_error
         fi
         SERVERINDEX=$(( $RANDOM % $TOTALSERVERS))
@@ -195,16 +205,6 @@ wg-quick up wg0
 echo
 wg
 echo
-
-# Handle shutdown behavior
-finish () {
-    echo "$(date): Shutting down Wireguard"
-    [ -w "$PORTFILE" ] && rm "$PORTFILE"
-    wg-quick down wg0
-    exit 0
-}
-
-trap finish SIGTERM SIGINT SIGQUIT
 
 # Port forwarding
 # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/portforwardrequest.cpp#L59
