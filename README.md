@@ -12,7 +12,7 @@ The following ENV vars are used:
 | ENV Var | Function |
 |-------|------|
 |LOC=swiss|Location of the server to connect to. Available classic/legacy locations are listed [here](https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha) and available 'next-gen' servers are listed [here](https://serverlist.piaservers.net/vpninfo/servers/new). For classic/legacy locations, LOC should be set to the location's index value, and for 'next-gen' servers the 'id' value should be used. Example values include ```us_california```, ```ca_ontario```, and ```swiss```. If left empty, or an invalid location is specified, the container will print out all available locations for the selected infrastructure and exit.
-|USEMODERN=0/1| Set this to 1 if you want to use the '[next gen](https://www.privateinternetaccess.com/blog/private-internet-access-next-generation-network-now-available-for-beta-preview/)' network. Otherwise the legacy/current network will be used. This must be set to 1 for ```PORT_FORWARDING``` to function.
+|USEMODERN=0/1| Set this to 1 if you want to use the '[next gen](https://www.privateinternetaccess.com/blog/private-internet-access-next-generation-network-now-available-for-beta-preview/)' network. Otherwise the classic/legacy network will be used. This must be set to 1 for ```PORT_FORWARDING``` to function.
 |USER=p00000000|PIA username
 |PASS=xxxxxxxx|PIA password
 |ALLOW_DOCKER=0/1|Whether to allow input/output traffic to the Docker network. Set to 1 to enable. Defaults to 0 if not specified.
