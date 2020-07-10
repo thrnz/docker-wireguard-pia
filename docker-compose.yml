@@ -5,14 +5,15 @@ services:
             wg-vpn:
         image: thrnz/docker-wireguard-pia
         volumes:
+            # Auth token is stored here
             - pia:/pia
-            # Forwarded port is dumped to /pia-shared/port.dat for potential use in other containers
-            #- pia-shared:/pia-shared
-        # privileged is needing for adding 0.0.0.0/0 route
+            # If enabled, the forwarded port is dumped to /pia-shared/port.dat for potential use in other containers
+            - pia-shared:/pia-shared
+        # privileged is needing for adding the 0.0.0.0/0 route
         privileged: true
         cap_add:
             - NET_ADMIN
-            # Still needed with 5.6+ kernel?
+            # SYS_MODULE might not be needed with a 5.6+ kernel?
             - SYS_MODULE
         environment:
             #- LOCAL_NETWORK=192.168.1.0/24
@@ -22,12 +23,22 @@ services:
             - PASS=xxxxxxxxxxxxxxxx
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
-            #- USEMODERN=1
-            #- PORT_FORWARDING=0
+            - USEMODERN=1
+            - PORT_FORWARDING=1
+        # May as well disable ipv6. Should be blocked by iptables anyway.
         sysctls:
             - net.ipv6.conf.default.disable_ipv6=1
             - net.ipv6.conf.all.disable_ipv6=1
             - net.ipv6.conf.lo.disable_ipv6=1
+
+    # Example of another service sharing the VPN
+    other-service:
+        image: some-other-image
+        # For scripting purposes, other containers can access the forwarded port number via /pia-shared/port.dat
+        volumes:
+            - pia-shared:/pia-shared
+        # Other services can share the VPN using 'network_mode'
+        network_mode: "service:vpn"
 
 volumes:
     pia:
