@@ -24,6 +24,10 @@ services:
             #- VPNDNS=8.8.8.8,8.8.4.4
             #- USEMODERN=1
             #- PORT_FORWARDING=0
+        sysctls:
+            - net.ipv6.conf.default.disable_ipv6=1
+            - net.ipv6.conf.all.disable_ipv6=1
+            - net.ipv6.conf.lo.disable_ipv6=1
 
 volumes:
     pia:
