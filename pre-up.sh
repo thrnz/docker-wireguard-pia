@@ -23,13 +23,14 @@ iptables -A INPUT -i lo -j ACCEPT
 if [ $ALLOW_DOCKER -eq 1 ] ; then 
     docker_network="$(ip -o addr show dev eth0|
             awk '$3 == "inet" {print $4}')"
-
+    echo "$(date): Allowing network access to $docker_network (docker)"
     iptables -A OUTPUT -o eth0 --destination $docker_network -j ACCEPT
     iptables -A INPUT -i eth0 --source $docker_network -j ACCEPT
 fi
 
 #Set env var LOCAL_NETWORK=192.168.1.1/24 to allow LAN input/output
-if [ ! -z $LOCAL_NETWORK ]; then
+if [ -n "$LOCAL_NETWORK" ]; then
+    echo "$(date): Allowing network access to $LOCAL_NETWORK"
     iptables -A OUTPUT -o eth0 --destination $LOCAL_NETWORK -j ACCEPT
     iptables -A INPUT -i eth0 --source $LOCAL_NETWORK -j ACCEPT
 fi
