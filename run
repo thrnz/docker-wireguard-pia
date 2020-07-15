@@ -50,7 +50,7 @@ now_sleep () {
 
 # An error with no recovery logic occured. Either go to sleep or exit.
 fatal_error () {
-  echo Fatal error
+  echo "$(date): Fatal error"
   [ $EXIT_ON_FATAL -eq 1 ] && exit 1
   sleep infinity &
   wait $!
@@ -74,17 +74,31 @@ get_auth_token () {
     echo "$TOK" > "$TOKENFILE"
 }
 
+# The PIA desktop app uses a public key to verify server list downloads. May as well do the same.
+# https://github.com/pia-foss/desktop/blob/b701601bfa806621a41039514bbb507e250466ec/common/src/jsonrefresher.cpp#L93
+verify_serverlist ()
+{
+    echo "$SERVERLIST" | head -n 1 | tr -d '\n' > /tmp/servers.json
+    echo "$SERVERLIST" | tail -n +3 | base64 -d > /tmp/servers.sig
+    if openssl dgst -sha256 -verify /RegionsListPubKey.pem -signature /tmp/servers.sig /tmp/servers.json; then
+        cp /tmp/servers.json $DATAFILE
+    else
+        echo "$(date): Failed to verify server list"
+        fatal_error
+    fi
+}
+
 get_servers () {
     if [ $USEMODERN -eq 1 ]; then
         # https://github.com/pia-foss/mobile-common-regions/blob/master/regions/src/commonMain/kotlin/com/privateinternetaccess/common/regions/internals/RegionsCommon.kt#L23
         if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
-            # The response contains a signature that we won't bother checking. We'll assume https is enough.
-            # The json response is just the first line, so cut the rest off
-            echo "$(date): Fetching modern PIA server list"
+            echo "$(date): Fetching and verifying modern PIA server list"
             tmp_allow_host "serverlist.piaservers.net" 443
-            curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "serverlist.piaservers.net:443:$IP" \
-                "https://serverlist.piaservers.net/vpninfo/servers/new" | head -1 > "$DATAFILE"
+            SERVERLIST=$(curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "serverlist.piaservers.net:443:$IP" \
+                "https://serverlist.piaservers.net/vpninfo/servers/new")
+            verify_serverlist
         fi
+
         # Some locations have multiple servers available. Pick a random one.
         TOTALSERVERS=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | length' $DATAFILE)
         if ! [[ "$TOTALSERVERS" =~ ^[0-9]+$ ]] || [ $TOTALSERVERS -eq 0 ] 2>/dev/null; then
@@ -107,12 +121,11 @@ get_servers () {
         # PIA desktop client redownloads server list on launch and then every 10mins.
         # May as well mimic that behavior.
         if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
-            # The response contains a signature that we won't bother checking. We'll assume https is enough.
-            # The json response is just the first line, so cut the rest off
-            echo "$(date): Fetching legacy PIA server list"
+            echo "$(date): Fetching and verifying legacy PIA server list"
             tmp_allow_host "www.privateinternetaccess.com" 443
-            curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "www.privateinternetaccess.com:443:$IP" \
-                "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha" | head -1 > "$DATAFILE"
+            SERVERLIST=$(curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "www.privateinternetaccess.com:443:$IP" \
+                "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha")
+            verify_serverlist
         fi
         if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
             echo "$(date): No matching servers found. Valid servers are:"

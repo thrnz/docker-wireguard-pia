@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     ip6tables \
     iptables \
     jq \
+    openssl \
     wireguard-tools
 
 ENV ALLOW_DOCKER=0 \
@@ -19,6 +20,10 @@ ENV ALLOW_DOCKER=0 \
 
 # Get the PIA CA cert
 ADD https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt /rsa_4096.crt
+
+# The PIA desktop app uses this public key to verify server list downloads
+# https://github.com/pia-foss/desktop/blob/master/daemon/src/environment.cpp#L30
+COPY ./RegionsListPubKey.pem /RegionsListPubKey.pem
 
 # Add main work dir to PATH
 WORKDIR /scripts
@@ -33,5 +38,4 @@ VOLUME /pia
 # Store stuff that might be shared with another container here (eg forwarded port)
 VOLUME /pia-shared
 
-# Normal behavior is just to run wireguard with existing configs
 CMD ["/scripts/run"]
