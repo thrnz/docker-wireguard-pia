@@ -167,7 +167,7 @@ get_wgconf () {
     WGCONF="/etc/wireguard/wg0.conf"
     echo "$(date): Generating $WGCONF"
 
-    if [ -z $VPNDNS ]; then
+    if [ -z "$VPNDNS" ]; then
         VPNDNS=$(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
         echo "$(date): Using PIA DNS servers: $VPNDNS"
     else

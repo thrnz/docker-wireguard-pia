@@ -30,9 +30,11 @@ fi
 
 #Set env var LOCAL_NETWORK=192.168.1.1/24 to allow LAN input/output
 if [ -n "$LOCAL_NETWORK" ]; then
-    echo "$(date): Allowing network access to $LOCAL_NETWORK"
-    iptables -A OUTPUT -o eth0 --destination $LOCAL_NETWORK -j ACCEPT
-    iptables -A INPUT -i eth0 --source $LOCAL_NETWORK -j ACCEPT
+    for range in $LOCAL_NETWORK; do
+        echo "$(date): Allowing network access to $range"
+        iptables -A OUTPUT -o eth0 --destination $range -j ACCEPT
+        iptables -A INPUT -i eth0 --source $range -j ACCEPT
+    done
 fi
 
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE

@@ -13,7 +13,9 @@ fi
 
 #Set env var LOCAL_NETWORK=192.168.1.1/24 to allow LAN input/output
 if [ -n "$LOCAL_NETWORK" ]; then
-    echo "$(date): Revoking network access to $LOCAL_NETWORK"
-    iptables -D OUTPUT -o eth0 --destination $LOCAL_NETWORK -j ACCEPT
-    iptables -D INPUT -i eth0 --source $LOCAL_NETWORK -j ACCEPT
+   for range in $LOCAL_NETWORK; do
+        echo "$(date): Revoking network access to $range"
+        iptables -D OUTPUT -o eth0 --destination $range -j ACCEPT
+        iptables -D INPUT -i eth0 --source $range -j ACCEPT
+    done
 fi

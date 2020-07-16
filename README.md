@@ -16,9 +16,9 @@ The following ENV vars are used:
 |USER=p00000000|PIA username
 |PASS=xxxxxxxx|PIA password
 |ALLOW_DOCKER=0/1|Whether to allow input/output traffic to the Docker network. Set to 1 to enable. Defaults to 0 if not specified.
-|LOCAL_NETWORK=192.168.1.0/24|Whether to allow input/output traffic to the LAN. LAN traffic is blocked by default if not specified.
-|KEEPALIVE = 25|If defined, PersistentKeepalive will be set to this in the Wireguard config.
-|VPNDNS = 8.8.8.8, 8.8.4.4|Use these DNS servers in the Wireguard config. Defaults to PIA's DNS servers if not specified.
+|LOCAL_NETWORK=192.168.1.0/24|Whether to route and allow input/output traffic to the LAN. LAN access is blocked by default if not specified. Multiple ranges can be specified, separated by a space.
+|KEEPALIVE=25|If defined, PersistentKeepalive will be set to this in the Wireguard config.
+|VPNDNS=8.8.8.8, 8.8.4.4|Use these DNS servers in the Wireguard config. Defaults to PIA's DNS servers if not specified.
 |PORT_FORWARDING=0/1|Whether to enable port forwarding. Requires ```USEMODERN=1``` and a supported server. Defaults to 0 if not specified. The forwarded port number is dumped to ```/pia-shared/port.dat``` for possible access by scripts in other containers.
 |EXIT_ON_FATAL=0|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this is set to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behavior if other containers are sharing the conneciton.
 
