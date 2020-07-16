@@ -63,7 +63,7 @@ get_auth_token () {
     [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
     echo "$(date): Getting new auth token"
     tmp_allow_host "www.privateinternetaccess.com" 443
-    TOK=$(curl --silent --show-error --request --max-time $CURL_MAX_TIME POST \
+    TOK=$(curl --silent --show-error --request POST --max-time $CURL_MAX_TIME \
         --header "Content-Type: application/json" \
         --resolve "www.privateinternetaccess.com:443:$IP" \
         --data "{\"username\":\"$USER\",\"password\":\"$PASS\"}" \
