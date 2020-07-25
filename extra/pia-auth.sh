@@ -2,7 +2,7 @@
 
 # Generate and output a PIA auth token
 #
-# Requires curl
+# Requires jq and curl
 #
 # Options:
 #  -u <username>
