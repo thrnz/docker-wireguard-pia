@@ -5,13 +5,13 @@
 # Requires jq and curl.
 #
 # Options:
-#  -t </path/to/tokenfile>      Path of a valid PIA auth token
+#  -t </path/to/tokenfile>      Path to a valid PIA auth token
 #  -i <vpn IP>                  IP address of the connected VPN server
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
 #                               Requests will be insecure if not specified
 #  -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert
 #                               Requests will be insecure if not specified
-#  -p </path/to/port.dat        (Optional) Dump forwarded port here if specified, for access by other scripts
+#  -p </path/to/port.dat        (Optional) Dump forwarded port here for access by other scripts
 #
 # Examples:
 #   pf.sh -t ~/.pia-token -i 37.235.97.81
@@ -26,6 +26,8 @@
 #
 # This script has been tested with Wireguard, but should (?) work on OpenVPN too.
 #
+# Port forwarding on the 'next-gen' network isn't supported outside of the official PIA app at this stage. Use at your own risk!
+#
 # Based on what was found in the open source app:
 # https://github.com/pia-foss/desktop/blob/master/daemon/src/portforwardrequest.cpp
 
@@ -37,6 +39,7 @@ fatal_error () {
 
 # Handle shutdown behavior
 finish () {
+  echo "$(date): Port forward rebinding stopped. The port will likely close soon."
   exit 0
 }
 trap finish SIGTERM SIGINT SIGQUIT
@@ -49,8 +52,7 @@ usage() {
   echo "                              Requests will be insecure if not specified"
   echo " -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert"
   echo "                              Requests will be insecure if not specified"
-  echo " -p </path/to/port.dat        (Optional) Dump forwarded port here if specified"
-  exit 0
+  echo " -p </path/to/port.dat        (Optional) Dump forwarded port here for access by other scripts"
 }
 
 while getopts ":t:i:n:c:p:" args; do
@@ -118,7 +120,7 @@ pf_firstrun=1
 
 # Minimum args needed to run
 if [ -z "$tokenfile" ] || [ -z "$vpn_ip" ]; then
-  usage
+  usage && exit 0
 fi
 
 # For simplicity, use '--insecure' by default.
@@ -128,7 +130,7 @@ pf_host="$vpn_ip"
 [ -n "$cacert" ] && [ -n "$vpn_cn" ] &&
   verify="--cacert $cacert --resolve $vpn_cn:19999:$vpn_ip" &&
   pf_host="$vpn_cn" &&
-  echo "$(date): Verifying HTTPS requests to $vpn_cn using $cacert"
+  echo "$(date): Verifying requests to $vpn_cn using $cacert"
 
 # Main loop
 while true; do
@@ -148,7 +150,7 @@ while true; do
     echo "$(date): Forwarding on port $pf_port"
     echo "$(date): Rebind interval: $pf_bindinterval seconds"
     # Dump port here if requested
-    [ -n "$portfile" ] && echo "New port dumped to $portfile" && echo $pf_port > "$portfile"
+    [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo $pf_port > "$portfile"
   fi
   sleep $pf_bindinterval &
   wait $!
