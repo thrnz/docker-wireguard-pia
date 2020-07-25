@@ -13,8 +13,10 @@
 #                               The request to add the WG pubkey may be insecure if not specified
 #  -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL.
 #  -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS.
+#  -a                           List available locations and whether they support port forwarding
 #
 # Examples:
+#   wg-gen.sh -a
 #   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf
 #   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf -c ~/rsa_4096.crt -k ~/pubkey.pem -d 8.8.8.8,8.8.4.4
 #
@@ -28,8 +30,16 @@
 # Wireguard is not supported outside of the official PIA app at this stage. Use at your own risk!
 
 fatal_error () {
+  cleanup
   echo "Fatal error"
   exit 1
+}
+
+cleanup(){
+  [ -w "$servers_raw" ] && rm "$servers_raw"
+  [ -w "$servers_json" ] && rm "$servers_json"
+  [ -w "$servers_sig" ] && rm "$servers_sig"
+  [ -w "$addkey_response" ] && rm "$addkey_response"
 }
 
 usage() {
@@ -41,30 +51,36 @@ usage() {
   echo "                              The request to add the WG pubkey may be insecure if not specified"
   echo " -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL."
   echo " -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS."
+  echo " -a                           List available locations and whether they support port forwarding"
 }
 
-while getopts ":t:l:o:c:k:d:" args; do
-  case ${args} in
-    t)
-      tokenfile=$OPTARG
-      ;;
-    l)
-      location=$OPTARG
-      ;;
-    o)
-      wg_out=$OPTARG
-      ;;
-    c)
-      pia_cacert=$OPTARG
-      ;;
-    k)
-      pia_pubkey=$OPTARG
-      ;;
-    d)
-      dns=$OPTARG
-      ;;
-  esac
-done
+parse_args() {
+  while getopts ":t:l:o:c:k:d:a" args; do
+    case ${args} in
+      t)
+        tokenfile=$OPTARG
+        ;;
+      l)
+        location=$OPTARG
+        ;;
+      o)
+        wg_out=$OPTARG
+        ;;
+      c)
+        pia_cacert=$OPTARG
+        ;;
+      k)
+        pia_pubkey=$OPTARG
+        ;;
+      d)
+        dns=$OPTARG
+        ;;
+      a)
+        list_and_exit=1
+        ;;
+    esac
+  done
+}
 
 # The PIA desktop app uses a public key to verify server list downloads.
 # https://github.com/pia-foss/desktop/blob/b701601bfa806621a41039514bbb507e250466ec/common/src/jsonrefresher.cpp#L93
@@ -80,27 +96,26 @@ verify_serverlist ()
 
 get_servers() {
   echo "Fetching next-gen PIA server list"
-  serverlist=$(curl --silent --show-error --max-time $curl_max_time \
-              "https://serverlist.piaservers.net/vpninfo/servers/new")
-
-  echo "$serverlist" | head -n 1 | tr -d '\n' > $servers_json
-  echo "$serverlist" | tail -n +3 | base64 -d > $servers_sig
-
+  curl --silent --show-error --max-time "$curl_max_time" \
+              "https://serverlist.piaservers.net/vpninfo/servers/new" > "$servers_raw"
+  head -n 1 "$servers_raw" | tr -d '\n' > "$servers_json"
+  tail -n +3 "$servers_raw" | base64 -d > "$servers_sig"
   [ -n "$pia_pubkey" ] && verify_serverlist
 
+  [ "$list_and_exit" -eq 1 ] && echo "Available location ids:" && jq '.regions | .[] | {id, port_forward}' "$servers_json" && cleanup && exit 0
+
   # Some locations have multiple servers available. Pick a random one.
-  totalservers=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | length' $servers_json)
-  if ! [[ "$totalservers" =~ ^[0-9]+$ ]] || [ $totalservers -eq 0 ] 2>/dev/null; then
-    echo "No matching servers found. Valid servers are:"
-    jq -r '.regions | .[] | .id' "$servers_json"
+  totalservers=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | length' "$servers_json")
+  if ! [[ "$totalservers" =~ ^[0-9]+$ ]] || [ "$totalservers" -eq 0 ] 2>/dev/null; then
+    echo "Location \"$location\" not found. Run with -a to list valid servers."
     fatal_error
   fi
   serverindex=$(( $RANDOM % $totalservers))
-  wg_cn=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].cn' $servers_json)
-  wg_ip=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].ip' $servers_json)
-  wg_port=$(jq -r '.groups.wg | .[0] | .ports | .[0]' $servers_json)
+  wg_cn=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].cn' "$servers_json")
+  wg_ip=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].ip' "$servers_json")
+  wg_port=$(jq -r '.groups.wg | .[0] | .ports | .[0]' "$servers_json")
 
-  [ $(jq -r '.regions | .[] | select(.id=="'$location'") | .port_forward' $servers_json) == "true" ] && port_forward_avail=1
+  [ $(jq -r '.regions | .[] | select(.id=="'$location'") | .port_forward' "$servers_json") == "true" ] && port_forward_avail=1
 }
 
 get_wgconf () {
@@ -110,32 +125,32 @@ get_wgconf () {
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
   if [ -n "$pia_cacert" ]; then
-    echo "Registering public key with PIA endpoint $location - $wg_cn ($wg_ip)"
-    addkey_response=$(curl --get --silent \
+    echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
+    curl --get --silent \
       --data-urlencode "pubkey=$client_public_key" \
       --data-urlencode "pt=$(cat $tokenfile)" \
       --cacert "$pia_cacert" \
       --resolve "$wg_cn:$wg_port:$wg_ip" \
-      "https://$wg_cn:$wg_port/addKey")
+      "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
   else
-    echo "(INSECURE) Registering public key with PIA endpoint $location - $wg_cn ($wg_ip)"
-    addkey_response=$(curl --get --silent \
+    echo "(INSECURE) Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
+    curl --get --silent \
       --data-urlencode "pubkey=$client_public_key" \
       --data-urlencode "pt=$(cat $tokenfile)" \
       --insecure \
-      "https://$wg_ip:$wg_port/addKey")
+      "https://$wg_ip:$wg_port/addKey" > "$addkey_response"
   fi
-  [ "$(echo $addkey_response | jq -r .status)" != "OK" ] && echo "WG key registration failed" && echo $addkey_response && fatal_error
+  [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error
 
-  peer_ip="$(echo $addkey_response | jq -r .peer_ip)"
-  server_public_key="$(echo $addkey_response | jq -r .server_key)"
-  server_ip="$(echo $addkey_response | jq -r .server_ip)"
-  server_port="$(echo $addkey_response | jq -r .server_port)"
+  peer_ip="$(jq -r .peer_ip "$addkey_response")"
+  server_public_key="$(jq -r .server_key "$addkey_response")"
+  server_ip="$(jq -r .server_ip "$addkey_response")"
+  server_port="$(jq -r .server_port "$addkey_response")"
 
   echo "Generating $wg_out"
 
   if [ -z "$dns" ]; then
-      dns=$(echo $addkey_response | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
+      dns=$(jq -r '.dns_servers[0:2]' "$addkey_response" | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
       echo "Using PIA DNS servers: $dns"
   else
       echo "Using custom DNS servers: $dns"
@@ -158,13 +173,21 @@ CONFF
 
 curl_max_time=15
 port_forward_avail=0
-servers_json="/tmp/servers.json"
-servers_sig="/tmp/servers.sig"
+list_and_exit=0
+
+parse_args "$@"
 
 # Minimum args needed to run
-if [ -z "$tokenfile" ] || [ -z "$location" ] || [ -z "$wg_out" ]; then
-   usage && exit 0
+if [ "$list_and_exit" -eq 0 ]; then
+  if [ -z "$tokenfile" ] || [ -z "$location" ] || [ -z "$wg_out" ]; then
+    usage && exit 0
+  fi
 fi
+
+servers_raw=$(mktemp)
+servers_sig=$(mktemp)
+servers_json=$(mktemp)
+addkey_response=$(mktemp)
 
 get_servers
 get_wgconf
@@ -172,4 +195,5 @@ get_wgconf
 [ "$port_forward_avail" -eq 1 ] && echo "Port forwarding is available at this location"
 
 echo "Successfully generated $wg_out"
+cleanup
 exit 0
