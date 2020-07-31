@@ -29,8 +29,9 @@ The following ENV vars are used:
 * Persistent data (auth token and server list) is stored in /pia.
 * iptables should block all non Wireguard traffic by default.
 * ipv4 only. All ipv6 traffic should be blocked, but you may want to disable ipv6 on the container anyway.
-* An example docker-compose.yml is included.
+* An example [docker-compose.yml](/docker-compose.yml) is included.
 * Other containers can share the VPN using --net=container or docker-compose's network_mode.
+* Standalone [Bash scripts](/extra) are available for use outside of Docker.
 
 ## Credits
 Some bits and pieces have been borrowed from the following:
