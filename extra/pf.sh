@@ -6,25 +6,27 @@
 #
 # Options:
 #  -t </path/to/tokenfile>      Path to a valid PIA auth token
-#  -i <vpn IP>                  IP address of the connected VPN server
+#  -i <pf api ip>               IP to send port-forward API requests to
+#                               For Wireguard, this is the VPN server IP (ie. Endpoint in wg.conf)
+#                               For OpenVPN, this is the VPN interface gateway IP (eg 10.x.x.1)
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
 #                               Requests will be insecure if not specified
 #  -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert
 #                               Requests will be insecure if not specified
-#  -p </path/to/port.dat        (Optional) Dump forwarded port here for access by other scripts
+#  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
 #
 # Examples:
 #   pf.sh -t ~/.pia-token -i 37.235.97.81
 #   pf.sh -t ~/.pia-token -i 37.235.97.81 -n london416 -c /rsa_4096.crt -p /port.dat
 #
-# For port forwarding on the next-gen network, we need a valid PIA auth token and to know the IP of the server we're connected to.
+# For port forwarding on the next-gen network, we need a valid PIA auth token and to know the address to send API requests to.
 # Optionally, if we know the common name of the server we're connected to we can verify our HTTPS requests.
 # The PIA ca cert can be found here: https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt
 #
 # Previously, PIA port forwarding was done with a single request when the VPN came up.
 # Now we need to 'rebind' every 15 mins in order to keep the port open/alive.
 #
-# This script has been tested with Wireguard, but should (?) work on OpenVPN too.
+# This script has been tested with Wireguard and briefly with OpenVPN
 #
 # Port forwarding on the 'next-gen' network isn't supported outside of the official PIA app at this stage. Use at your own risk!
 #
@@ -47,12 +49,14 @@ trap finish SIGTERM SIGINT SIGQUIT
 usage() {
   echo "Options:"
   echo " -t </path/to/tokenfile>      Path of a valid PIA auth token"
-  echo " -i <vpn IP>                  IP address of the connected VPN server"
+  echo " -i <pf api ip>               IP to send port-forward API requests to"
+  echo "                              For Wireguard, this is the VPN server IP (ie. Endpoint in wg.conf)"
+  echo "                              For OpenVPN, this is the VPN interface gateway IP (eg 10.x.x.1)"
   echo " -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")"
   echo "                              Requests will be insecure if not specified"
   echo " -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert"
   echo "                              Requests will be insecure if not specified"
-  echo " -p </path/to/port.dat        (Optional) Dump forwarded port here for access by other scripts"
+  echo " -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts"
 }
 
 while getopts ":t:i:n:c:p:" args; do
