@@ -108,7 +108,12 @@ get_sig () {
   pf_getsignature=$(echo $pf_getsig | jq -r .signature)
   pf_port=$(echo $pf_payload | base64 -d | jq -r .port)
   pf_token_expiry_raw=$(echo $pf_payload | base64 -d | jq -r .expires_at)
-  pf_token_expiry=$(date -D %Y-%m-%dT%H:%M:%S --date="$pf_token_expiry_raw" +%s)
+  # Coreutils date doesn't need format specified (-D), whereas BusyBox does
+  if date --help 2>&1 /dev/null | grep -i 'busybox'; then
+    pf_token_expiry=$(date -D %Y-%m-%dT%H:%M:%S --date="$pf_token_expiry_raw" +%s)
+  else
+    pf_token_expiry=$(date --date="$pf_token_expiry_raw" +%s)
+  fi
 }
 
 curl_max_time=15
