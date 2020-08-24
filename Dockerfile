@@ -10,8 +10,7 @@ RUN apk add --no-cache \
     openssl \
     wireguard-tools
 
-ENV ALLOW_DOCKER=0 \
-    LOCAL_NETWORK= \
+ENV LOCAL_NETWORK= \
     KEEPALIVE=0 \
     VPNDNS= \
     USEMODERN=1 \

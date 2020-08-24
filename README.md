@@ -15,7 +15,6 @@ The following ENV vars are used:
 |USEMODERN=0/1| Set this to 1 to use the '[next gen](https://www.privateinternetaccess.com/blog/private-internet-access-next-generation-network-now-available-for-beta-preview/)' network, or 0 to use the classic/legacy network. This must be set to 1 for ```PORT_FORWARDING``` to function. Defaults to 1 if not specified.
 |USER=p00000000|PIA username
 |PASS=xxxxxxxx|PIA password
-|ALLOW_DOCKER=0/1|Whether to allow input/output traffic to the Docker network. Set to 1 to enable. Defaults to 0 if not specified.
 |LOCAL_NETWORK=192.168.1.0/24|Whether to route and allow input/output traffic to the LAN. LAN access is blocked by default if not specified. Multiple ranges can be specified, separated by a space.
 |KEEPALIVE=25|If defined, PersistentKeepalive will be set to this in the Wireguard config.
 |VPNDNS=8.8.8.8, 8.8.4.4|Use these DNS servers in the Wireguard config. Defaults to PIA's DNS servers if not specified.
