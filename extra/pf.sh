@@ -19,19 +19,20 @@
 #   pf.sh -t ~/.pia-token -i 37.235.97.81
 #   pf.sh -t ~/.pia-token -i 37.235.97.81 -n london416 -c /rsa_4096.crt -p /port.dat
 #
-# For port forwarding on the next-gen network, we need a valid PIA auth token and to know the address to send API requests to.
+# For port forwarding on the next-gen network, we need a valid PIA auth token (see pia-auth.sh) and to know the address to send API requests to.
+#
 # Optionally, if we know the common name of the server we're connected to we can verify our HTTPS requests.
-# The PIA ca cert can be found here: https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt
+# To do so, we need the PIA ca cert found here: https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt
 #
 # Previously, PIA port forwarding was done with a single request when the VPN came up.
 # Now we need to 'rebind' every 15 mins in order to keep the port open/alive.
 #
 # This script has been tested with Wireguard and briefly with OpenVPN
 #
-# Port forwarding on the 'next-gen' network isn't supported outside of the official PIA app at this stage. Use at your own risk!
-#
-# Based on what was found in the open source app:
-# https://github.com/pia-foss/desktop/blob/master/daemon/src/portforwardrequest.cpp
+# PIA haven't provided steps for port forwarding on the 'next-gen' network outside of the official app at this stage (Aug 2020).
+# This script is based on what was found in the source code to their desktop app (v.2.2.0):
+# https://github.com/pia-foss/desktop/blob/2.2.0/daemon/src/portforwardrequest.cpp
+# Use at your own risk!
 
 # An error with no recovery logic occured
 fatal_error () {
@@ -81,7 +82,7 @@ done
 
 bind_port () {
   pf_bind=$(curl --get --silent --show-error \
-      --retry 5 --retry-delay 15 --max-time $curl_max_time \
+      --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
       --data-urlencode "payload=$pf_payload" \
       --data-urlencode "signature=$pf_getsignature" \
       $verify \
@@ -95,7 +96,7 @@ bind_port () {
 
 get_sig () {
   pf_getsig=$(curl --get --silent --show-error \
-    --retry 5 --retry-delay 15 --max-time $curl_max_time \
+    --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
     --data-urlencode "token=$(cat $tokenfile)" \
     $verify \
     "https://$pf_host:19999/getSignature")
@@ -116,7 +117,10 @@ get_sig () {
   fi
 }
 
+# We don't use any error handling or retry logic beyond what curl provides
 curl_max_time=15
+curl_retry=5
+curl_retry_delay=15
 
 # Rebind every 15 mins (same as desktop app)
 pf_bindinterval=$(( 15 * 60))

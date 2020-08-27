@@ -10,6 +10,13 @@
 #
 # Example:
 #  pia-auth.sh -u p0000000 -p mypassword > ~/.pia-token
+#
+# deauth using:
+# curl --silent --show-error --request POST \
+#        --header "Content-Type: application/json" \
+#        --header "Authorization: Token $(cat ~/.pia-token)" \
+#        --data "{}" \
+#        "https://www.privateinternetaccess.com/api/client/v2/expire_token"
 
 while getopts ":u:p:" args; do
   case ${args} in
