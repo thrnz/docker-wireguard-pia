@@ -57,7 +57,7 @@ fatal_error () {
 }
 
 # Get a new auth token
-# Unsure how long an auth token will remain valid. It'll need manually deleting if it expires.
+# Unsure how long an auth token will remain valid
 get_auth_token () {
     [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
     [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
@@ -72,6 +72,7 @@ get_auth_token () {
     touch "$TOKENFILE"
     chmod 600 "$TOKENFILE"
     echo "$TOK" > "$TOKENFILE"
+    new_auth_token=1
 }
 
 # The PIA desktop app uses a public key to verify server list downloads. May as well do the same.
@@ -150,14 +151,23 @@ get_wgconf () {
     # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
     iptables -A OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
     echo "$(date): Registering public key with PIA endpoint $LOC - $WG_DNS ($WG_HOST)"
-    ADDKEY_RESPONSE=$(curl --get --silent \
-        --data-urlencode "pubkey=$CLIENT_PUBLIC_KEY" \
-        --data-urlencode "pt=$TOK" \
-        --cacert /rsa_4096.crt \
-        --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
-        "https://$WG_SERIAL:$WG_PORT/addKey")
 
-    [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" != "OK" ] && echo "$(date): WG key registration failed" && echo $ADDKEY_RESPONSE && fatal_error
+    # Try to recover from an expired/invalid auth token if we haven't yet got a new one
+    while true; do
+      ADDKEY_RESPONSE=$(curl --get --silent \
+          --data-urlencode "pubkey=$CLIENT_PUBLIC_KEY" \
+          --data-urlencode "pt=$TOK" \
+          --cacert /rsa_4096.crt \
+          --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
+          "https://$WG_SERIAL:$WG_PORT/addKey")
+      [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" == "OK" ] && break
+      if [ $new_auth_token -eq 0 ] && [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" == "ERROR" ] && [ "$(echo $ADDKEY_RESPONSE | jq -r .message)" == "Login failed!" ]; then
+        echo "$(date): Auth failed, regenerating token"
+        get_auth_token
+        continue
+      fi
+      echo "$(date): WG key registration failed" && echo $ADDKEY_RESPONSE && fatal_error
+    done
 
     PEER_IP="$(echo $ADDKEY_RESPONSE | jq -r .peer_ip)"
     SERVER_PUBLIC_KEY="$(echo $ADDKEY_RESPONSE | jq -r .server_key)"
@@ -195,6 +205,7 @@ CONFF
 }
 
 PORT_FORWARD_AVAIL=0
+new_auth_token=0
 
 [ -w "$PORTFILE" ] && rm "$PORTFILE"
 
