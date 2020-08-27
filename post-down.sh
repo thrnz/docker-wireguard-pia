@@ -3,7 +3,6 @@
 # Allow docker network input/output
 docker_network="$(ip -o addr show dev eth0|
         awk '$3 == "inet" {print $4}')"
-echo "$(date): Revoking network access to $docker_network (docker)"
 iptables -D OUTPUT -o eth0 --destination $docker_network -j ACCEPT
 iptables -D INPUT -i eth0 --source $docker_network -j ACCEPT
 
