@@ -19,7 +19,7 @@ The following ENV vars are used:
 |KEEPALIVE=25|If defined, PersistentKeepalive will be set to this in the Wireguard config.
 |VPNDNS=8.8.8.8, 8.8.4.4|Use these DNS servers in the Wireguard config. Defaults to PIA's DNS servers if not specified.
 |PORT_FORWARDING=0/1|Whether to enable port forwarding. Requires ```USEMODERN=1``` and a supported server. Defaults to 0 if not specified. The forwarded port number is dumped to ```/pia-shared/port.dat``` for possible access by scripts in other containers.
-|EXIT_ON_FATAL=0|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this is set to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behavior if other containers are sharing the connection.
+|EXIT_ON_FATAL=0/1|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behavior if other containers are sharing the connection.
 
 ## Notes
 * PIA doesn't support Wireguard connections outside of their official app at this stage (June 2020), so use at your own risk. YMMV.
@@ -29,7 +29,7 @@ The following ENV vars are used:
 * iptables should block all non Wireguard traffic by default.
 * ipv4 only. All ipv6 traffic should be blocked, but you may want to disable ipv6 on the container anyway.
 * An example [docker-compose.yml](/docker-compose.yml) is included.
-* Other containers can share the VPN using --net=container or docker-compose's network_mode.
+* Other containers can share the VPN using [```--net=container```](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [```network_mode```](https://docs.docker.com/compose/compose-file/#network_mode).
 * Standalone [Bash scripts](/extra) are available for use outside of Docker.
 
 ## Credits
