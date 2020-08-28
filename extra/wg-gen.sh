@@ -9,8 +9,6 @@
 #  -t </path/to/tokenfile>      Path to a valid PIA auth token
 #  -l <location>                id of the location to connect to (eg. "swiss")
 #  -o </path/to/wg0.conf        The generated .conf will be saved here
-#  -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert
-#                               The request to add the WG pubkey may be insecure if not specified
 #  -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL.
 #  -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS.
 #  -a                           List available locations and whether they support port forwarding
@@ -18,12 +16,10 @@
 # Examples:
 #   wg-gen.sh -a
 #   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf
-#   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf -c ~/rsa_4096.crt -k ~/pubkey.pem -d 8.8.8.8,8.8.4.4
+#   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf -k ~/pubkey.pem -d 8.8.8.8,8.8.4.4
 #
 # Available servers can be found here:
 #  https://serverlist.piaservers.net/vpninfo/servers/new
-# The PIA ca cert can be found here:
-#  https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt
 # The public key for verifying the server list can be found here:
 #  https://github.com/pia-foss/desktop/blob/122710c6ada5db83620c63faff2d805ea52d7f40/daemon/src/environment.cpp#L30
 #
@@ -40,6 +36,7 @@ cleanup(){
   [ -w "$servers_json" ] && rm "$servers_json"
   [ -w "$servers_sig" ] && rm "$servers_sig"
   [ -w "$addkey_response" ] && rm "$addkey_response"
+  [ -w "$pia_cacert" ] && rm "$pia_cacert"
 }
 
 usage() {
@@ -47,15 +44,13 @@ usage() {
   echo " -t </path/to/tokenfile>      Path to a valid PIA auth token"
   echo " -l <location>                id of the location to connect to (eg. \"swiss\")"
   echo " -o </path/to/wg0.conf        The generated conf will be saved here"
-  echo " -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert"
-  echo "                              The request to add the WG pubkey may be insecure if not specified"
   echo " -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL."
   echo " -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS."
   echo " -a                           List available locations and whether they support port forwarding"
 }
 
 parse_args() {
-  while getopts ":t:l:o:c:k:d:a" args; do
+  while getopts ":t:l:o:k:d:a" args; do
     case ${args} in
       t)
         tokenfile=$OPTARG
@@ -124,22 +119,20 @@ get_wgconf () {
   [ $? -ne 0 ] && echo "$(date) Error generating Wireguard key pair" && fatal_error
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
-  if [ -n "$pia_cacert" ]; then
-    echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
-    curl --get --silent \
-      --data-urlencode "pubkey=$client_public_key" \
-      --data-urlencode "pt=$(cat $tokenfile)" \
-      --cacert "$pia_cacert" \
-      --resolve "$wg_cn:$wg_port:$wg_ip" \
-      "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
-  else
-    echo "(INSECURE) Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
-    curl --get --silent \
-      --data-urlencode "pubkey=$client_public_key" \
-      --data-urlencode "pt=$(cat $tokenfile)" \
-      --insecure \
-      "https://$wg_ip:$wg_port/addKey" > "$addkey_response"
+
+  if ! curl --get --silent --max-time "$curl_max_time" --output "$pia_cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+    echo "Failed to download PIA ca cert"
+    fatal_error
   fi
+
+  echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
+  curl --get --silent \
+    --data-urlencode "pubkey=$client_public_key" \
+    --data-urlencode "pt=$(cat $tokenfile)" \
+    --cacert "$pia_cacert" \
+    --resolve "$wg_cn:$wg_port:$wg_ip" \
+    "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
+
   [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error
 
   peer_ip="$(jq -r .peer_ip "$addkey_response")"
@@ -188,6 +181,8 @@ servers_raw=$(mktemp)
 servers_sig=$(mktemp)
 servers_json=$(mktemp)
 addkey_response=$(mktemp)
+pia_cacert=$(mktemp)
+
 
 get_servers
 get_wgconf
