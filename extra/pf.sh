@@ -11,18 +11,15 @@
 #                               For OpenVPN, this is the VPN interface gateway IP (eg 10.x.x.1)
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
 #                               Requests will be insecure if not specified
-#  -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert
-#                               Requests will be insecure if not specified
 #  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
 #
 # Examples:
 #   pf.sh -t ~/.pia-token -i 37.235.97.81
-#   pf.sh -t ~/.pia-token -i 37.235.97.81 -n london416 -c /rsa_4096.crt -p /port.dat
+#   pf.sh -t ~/.pia-token -i 37.235.97.81 -n london416 -p /port.dat
 #
 # For port forwarding on the next-gen network, we need a valid PIA auth token (see pia-auth.sh) and to know the address to send API requests to.
 #
 # Optionally, if we know the common name of the server we're connected to we can verify our HTTPS requests.
-# To do so, we need the PIA ca cert found here: https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt
 #
 # Previously, PIA port forwarding was done with a single request when the VPN came up.
 # Now we need to 'rebind' every 15 mins in order to keep the port open/alive.
@@ -36,12 +33,18 @@
 
 # An error with no recovery logic occured
 fatal_error () {
+  cleanup
   echo "$(date): Fatal error"
   exit 1
 }
 
+cleanup(){
+  [ -w "$cacert" ] && rm "$cacert"
+}
+
 # Handle shutdown behavior
 finish () {
+  cleanup
   echo "$(date): Port forward rebinding stopped. The port will likely close soon."
   exit 0
 }
@@ -54,8 +57,6 @@ usage() {
   echo "                              For Wireguard, this is the VPN server IP (ie. Endpoint in wg.conf)"
   echo "                              For OpenVPN, this is the VPN interface gateway IP (eg 10.x.x.1)"
   echo " -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")"
-  echo "                              Requests will be insecure if not specified"
-  echo " -c </path/to/rsa_4096.crt>   (Optional) Path to PIA ca cert"
   echo "                              Requests will be insecure if not specified"
   echo " -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts"
 }
@@ -70,9 +71,6 @@ while getopts ":t:i:n:c:p:" args; do
       ;;
     n)
       vpn_cn=$OPTARG
-      ;;
-    c)
-      cacert=$OPTARG
       ;;
     p)
       portfile=$OPTARG
@@ -110,7 +108,7 @@ get_sig () {
   pf_port=$(echo $pf_payload | base64 -d | jq -r .port)
   pf_token_expiry_raw=$(echo $pf_payload | base64 -d | jq -r .expires_at)
   # Coreutils date doesn't need format specified (-D), whereas BusyBox does
-  if date --help 2>&1 /dev/null | grep -i 'busybox'; then
+  if date --help 2>&1 /dev/null | grep -i 'busybox' > /dev/null; then
     pf_token_expiry=$(date -D %Y-%m-%dT%H:%M:%S --date="$pf_token_expiry_raw" +%s)
   else
     pf_token_expiry=$(date --date="$pf_token_expiry_raw" +%s)
@@ -136,14 +134,21 @@ if [ -z "$tokenfile" ] || [ -z "$vpn_ip" ]; then
   usage && exit 0
 fi
 
-# For simplicity, use '--insecure' by default.
-# To properly mimic what the desktop app does, supply a cn and a cacert
-verify="--insecure"
-pf_host="$vpn_ip"
-[ -n "$cacert" ] && [ -n "$vpn_cn" ] &&
-  verify="--cacert $cacert --resolve $vpn_cn:19999:$vpn_ip" &&
-  pf_host="$vpn_cn" &&
-  echo "$(date): Verifying requests to $vpn_cn using $cacert"
+# If we've been provided a cn, we can verify using the PIA ca cert
+if [ -n "$vpn_cn" ]; then
+  cacert=$(mktemp)
+  if ! curl --get --silent --max-time "$curl_max_time" --output "$cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+    echo "(date): Failed to download PIA ca cert"
+    fatal_error
+  fi
+  verify="--cacert $cacert --resolve $vpn_cn:19999:$vpn_ip"
+  pf_host="$vpn_cn"
+  echo "$(date): Verifying API requests. CN: $vpn_cn"
+else
+  # For simplicity, use '--insecure' by default.
+  verify="--insecure"
+  pf_host="$vpn_ip"
+fi
 
 # Main loop
 while true; do
