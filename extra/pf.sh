@@ -6,16 +6,18 @@
 #
 # Options:
 #  -t </path/to/tokenfile>      Path to a valid PIA auth token
-#  -i <pf api ip>               IP to send port-forward API requests to
-#                               For Wireguard, this is the VPN server IP (ie. Endpoint in wg.conf)
-#                               For OpenVPN, this is the VPN interface gateway IP (eg 10.x.x.1)
+#  -i <pf api ip>               (Optional) IP to send port-forward API requests to.
+#                               The PIA app sends requests to the gateway IP (eg 10.x.x.1),
+#                               however for Wireguard the server IP also seems to work.
+#                               An 'educated guess' is made if not specified.
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
 #                               Requests will be insecure if not specified
 #  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
 #
 # Examples:
-#   pf.sh -t ~/.pia-token -i 37.235.97.81
-#   pf.sh -t ~/.pia-token -i 37.235.97.81 -n london416 -p /port.dat
+#   pf.sh -t ~/.pia-token
+#   pf.sh -t ~/.pia-token -n sydney402
+#   pf.sh -t ~/.pia-token -i 10.13.14.1 -n london416 -p /port.dat
 #
 # For port forwarding on the next-gen network, we need a valid PIA auth token (see pia-auth.sh) and to know the address to send API requests to.
 #
@@ -51,14 +53,15 @@ finish () {
 trap finish SIGTERM SIGINT SIGQUIT
 
 usage() {
-  echo "Options:"
-  echo " -t </path/to/tokenfile>      Path of a valid PIA auth token"
-  echo " -i <pf api ip>               IP to send port-forward API requests to"
-  echo "                              For Wireguard, this is the VPN server IP (ie. Endpoint in wg.conf)"
-  echo "                              For OpenVPN, this is the VPN interface gateway IP (eg 10.x.x.1)"
-  echo " -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")"
-  echo "                              Requests will be insecure if not specified"
-  echo " -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts"
+  echo "Options:
+ -t </path/to/tokenfile>      Path to a valid PIA auth token
+ -i <pf api ip>               (Optional) IP to send port-forward API requests to.
+                              The PIA app sends requests to the gateway IP (eg 10.x.x.1),
+                              however for Wireguard the server IP also works.
+                              An 'educated guess' is made if not specified.
+ -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")
+                              Requests will be insecure if not specified
+ -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts"
 }
 
 while getopts ":t:i:n:c:p:" args; do
@@ -130,8 +133,22 @@ pf_remaining=0
 pf_firstrun=1
 
 # Minimum args needed to run
-if [ -z "$tokenfile" ] || [ -z "$vpn_ip" ]; then
+if [ -z "$tokenfile" ]; then
   usage && exit 0
+fi
+
+# Hacky way to try to automatically get the API IP: use the first hop of a traceroute.
+# We can't just get the default gateway from 'ip route' as wg-quick doesn't replace the default route.
+# Ideally we'd have been provided a cn, in case we 'guess' the wrong IP.
+# Must be a better way to do this.
+if [ -z "$vpn_ip" ]; then
+  vpn_ip=$(traceroute -4 -m 1 privateinternetaccess.com | tail -n 1 | awk '{print $2}')
+  # Very basic sanity check - make sure it matches 10.x.x.1
+  if ! echo "$vpn_ip" | grep '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' > /dev/null; then
+    echo "$(date): Automatically getting API IP failed."
+    fatal_error
+  fi
+  echo "$(date): Using $vpn_ip as API endpoint"
 fi
 
 # If we've been provided a cn, we can verify using the PIA ca cert
@@ -145,7 +162,8 @@ if [ -n "$vpn_cn" ]; then
   pf_host="$vpn_cn"
   echo "$(date): Verifying API requests. CN: $vpn_cn"
 else
-  # For simplicity, use '--insecure' by default.
+  # For simplicity, use '--insecure' by default, though show a warning
+  echo "$(date): API requests may be insecure. Specify a common name using -n."
   verify="--insecure"
   pf_host="$vpn_ip"
 fi
