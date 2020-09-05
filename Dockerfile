@@ -28,7 +28,7 @@ COPY ./RegionsListPubKey.pem /RegionsListPubKey.pem
 WORKDIR /scripts
 
 # Copy scripts to containers
-COPY pre-up.sh post-up.sh pre-down.sh post-down.sh run /scripts/
+COPY pre-up.sh post-up.sh pre-down.sh post-down.sh run ./extra/pf.sh /scripts/
 RUN chmod 755 /scripts/*
 
 # Store persistent PIA stuff here (auth token, server list)

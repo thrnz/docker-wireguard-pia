@@ -7,8 +7,6 @@
 # Options:
 #  -t </path/to/tokenfile>      Path to a valid PIA auth token
 #  -i <pf api ip>               (Optional) IP to send port-forward API requests to.
-#                               The PIA app sends requests to the gateway IP (eg 10.x.x.1),
-#                               however for Wireguard the server IP also seems to work.
 #                               An 'educated guess' is made if not specified.
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
 #                               Requests will be insecure if not specified
@@ -20,6 +18,9 @@
 #   pf.sh -t ~/.pia-token -i 10.13.14.1 -n london416 -p /port.dat
 #
 # For port forwarding on the next-gen network, we need a valid PIA auth token (see pia-auth.sh) and to know the address to send API requests to.
+#
+# With Wireguard, the PIA app uses the 'server_vip' address found in the 'addKey' response (eg 10.x.x.1), although 'server_ip' also appears to work.
+# With OpenVPN, the PIA app uses the gateway IP (also 10.x.x.1)
 #
 # Optionally, if we know the common name of the server we're connected to we can verify our HTTPS requests.
 #
@@ -41,7 +42,7 @@ fatal_error () {
 }
 
 cleanup(){
-  [ -w "$cacert" ] && rm "$cacert"
+  [ "$cacert_istemp" == "1" ] && [ -w "$cacert" ] && rm "$cacert"
 }
 
 # Handle shutdown behavior
@@ -56,8 +57,6 @@ usage() {
   echo "Options:
  -t </path/to/tokenfile>      Path to a valid PIA auth token
  -i <pf api ip>               (Optional) IP to send port-forward API requests to.
-                              The PIA app sends requests to the gateway IP (eg 10.x.x.1),
-                              however for Wireguard the server IP also works.
                               An 'educated guess' is made if not specified.
  -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")
                               Requests will be insecure if not specified
@@ -74,6 +73,9 @@ while getopts ":t:i:n:c:p:" args; do
       ;;
     n)
       vpn_cn=$OPTARG
+      ;;
+    c)
+      cacert=$OPTARG
       ;;
     p)
       portfile=$OPTARG
@@ -138,7 +140,7 @@ if [ -z "$tokenfile" ]; then
 fi
 
 # Hacky way to try to automatically get the API IP: use the first hop of a traceroute.
-# We can't just get the default gateway from 'ip route' as wg-quick doesn't replace the default route.
+# This seems to work for both Wireguard and OpenVPN.
 # Ideally we'd have been provided a cn, in case we 'guess' the wrong IP.
 # Must be a better way to do this.
 if [ -z "$vpn_ip" ]; then
@@ -153,10 +155,17 @@ fi
 
 # If we've been provided a cn, we can verify using the PIA ca cert
 if [ -n "$vpn_cn" ]; then
-  cacert=$(mktemp)
-  if ! curl --get --silent --max-time "$curl_max_time" --output "$cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
-    echo "(date): Failed to download PIA ca cert"
-    fatal_error
+  # Get the PIA ca crt if we weren't given it
+  if [ -z "$cacert" ]; then
+    echo "$(date): Getting PIA ca cert"
+    cacert=$(mktemp)
+    cacert_istemp=1
+    if ! curl --get --silent --max-time "$curl_max_time" --output "$cacert" \
+      --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
+      "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+      echo "(date): Failed to download PIA ca cert"
+      fatal_error
+    fi
   fi
   verify="--cacert $cacert --resolve $vpn_cn:19999:$vpn_ip"
   pf_host="$vpn_cn"
