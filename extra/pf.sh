@@ -9,7 +9,7 @@
 #  -i <pf api ip>               (Optional) IP to send port-forward API requests to.
 #                               An 'educated guess' is made if not specified.
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
-#                               Requests will be insecure if not specified
+#                               An 'educated guess' is made if not specified.
 #  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
 #
 # Examples:
@@ -24,8 +24,9 @@
 #
 # Optionally, if we know the common name of the server we're connected to we can verify our HTTPS requests.
 #
-# Previously, PIA port forwarding was done with a single request when the VPN came up.
-# Now we need to 'rebind' every 15 mins in order to keep the port open/alive.
+# Port forwarding appears to involve two api calls. The first (getSignature) is done once on startup and again when the returned pf 'token' will soon expire.
+# Port forwarding tokens seem to last ~2 months, so the chances of needing to call it again are low but we may as well do what the app does.
+# The second (bindPort) is done once at startup and again every 15 mins to 'keep the forwarded port alive'.
 #
 # This script has been tested with Wireguard and briefly with OpenVPN
 #
@@ -33,6 +34,8 @@
 # This script is based on what was found in the source code to their desktop app (v.2.2.0):
 # https://github.com/pia-foss/desktop/blob/2.2.0/daemon/src/portforwardrequest.cpp
 # Use at your own risk!
+#
+# Feel free to take apart and use in your own projects. A link back to the original might be nice though.
 
 # An error with no recovery logic occured
 fatal_error () {
@@ -151,6 +154,16 @@ if [ -z "$vpn_ip" ]; then
     fatal_error
   fi
   echo "$(date): Using $vpn_ip as API endpoint"
+fi
+
+# If we haven't been passed a cn, then use the cn the server is claiming
+if [ -z "$vpn_cn" ]; then
+  possible_cn=$(curl --insecure --verbose --head https://$vpn_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
+  # Sanity check - match 'lowercase123'
+  if echo "$possible_cn" | grep '[a-z]*[0-9]\{3\}' > /dev/null; then
+    echo "$(date): Using $possible_cn as cn"
+    vpn_cn="$possible_cn"
+  fi
 fi
 
 # If we've been provided a cn, we can verify using the PIA ca cert
