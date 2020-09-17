@@ -62,7 +62,7 @@ usage() {
  -i <pf api ip>               (Optional) IP to send port-forward API requests to.
                               An 'educated guess' is made if not specified.
  -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")
-                              Requests will be insecure if not specified
+                              An 'educated guess' is made if not specified.
  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts"
 }
 

@@ -1,16 +1,12 @@
 version: '3'
 services:
     vpn:
-        networks:
-            wg-vpn:
         image: thrnz/docker-wireguard-pia
         volumes:
             # Auth token is stored here
             - pia:/pia
             # If enabled, the forwarded port is dumped to /pia-shared/port.dat for potential use in other containers
             - pia-shared:/pia-shared
-        # privileged is needing for adding the 0.0.0.0/0 route
-        privileged: true
         cap_add:
             - NET_ADMIN
             # SYS_MODULE might not be needed with a 5.6+ kernel?
@@ -24,31 +20,39 @@ services:
             #- VPNDNS=8.8.8.8,8.8.4.4
             - USEMODERN=1
             - PORT_FORWARDING=1
-        # May as well disable ipv6. Should be blocked by iptables anyway.
         sysctls:
+            # wg-quick fails to set this without --privileged, so set it here instead if needed
+            - net.ipv4.conf.all.src_valid_mark=1
+            # May as well disable ipv6. Should be blocked anyway.
             - net.ipv6.conf.default.disable_ipv6=1
             - net.ipv6.conf.all.disable_ipv6=1
             - net.ipv6.conf.lo.disable_ipv6=1
-        # The continer has no recovery logic. Use a healthcheck to catch disconnects.
+        # The container has no recovery logic. Use a healthcheck to catch disconnects.
         healthcheck:
             test: ping -c 1 www.google.com || exit 1
             interval: 30s
             timeout: 10s
             retries: 3
 
-
     # Example of another service sharing the VPN
     other-service:
         image: some-other-image
-        # For scripting purposes, other containers can access the forwarded port number via /pia-shared/port.dat
-        volumes:
-            - pia-shared:/pia-shared
         # Other services can share the VPN using 'network_mode'
         network_mode: "service:vpn"
+
+    # Other containers can access the forwarded port number via /pia-shared/port.dat
+    # Here's an example of a bare-bones 'helper' container that passes the forwarded port to Deluge
+    # See https://gist.github.com/thrnz/dcbaa0af66c70af8e302a1c7eb75484a
+    deluge-port-helper:
+        build: /path/to/deluge-port-helper
+        volumes:
+            - pia-shared:/pia-shared:ro
+            - /path/to/deluge/conf:/deluge/conf
+        network_mode: "service:vpn"
+        depends_on:
+            - vpn
+            - other-service
 
 volumes:
     pia:
     pia-shared:
-    
-networks:
-    wg-vpn:
