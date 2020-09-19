@@ -139,6 +139,7 @@ get_wgconf () {
   server_public_key="$(jq -r .server_key "$addkey_response")"
   server_ip="$(jq -r .server_ip "$addkey_response")"
   server_port="$(jq -r .server_port "$addkey_response")"
+  pfapi_ip="$(jq -r .server_vip "$addkey_response")"
 
   echo "Generating $wg_out"
 
@@ -150,7 +151,8 @@ get_wgconf () {
   fi
 
   cat <<CONFF > "$wg_out"
-#$wg_cn
+#cn: $wg_cn
+#pf api ip: $pfapi_ip
 [Interface]
 PrivateKey = $client_private_key
 Address = $peer_ip
