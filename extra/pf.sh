@@ -72,7 +72,7 @@ while getopts ":t:i:n:c:p:" args; do
       tokenfile=$OPTARG
       ;;
     i)
-      vpn_ip=$OPTARG
+      api_ip=$OPTARG
       ;;
     n)
       vpn_cn=$OPTARG
@@ -146,19 +146,19 @@ fi
 # This seems to work for both Wireguard and OpenVPN.
 # Ideally we'd have been provided a cn, in case we 'guess' the wrong IP.
 # Must be a better way to do this.
-if [ -z "$vpn_ip" ]; then
-  vpn_ip=$(traceroute -4 -m 1 privateinternetaccess.com | tail -n 1 | awk '{print $2}')
+if [ -z "$api_ip" ]; then
+  api_ip=$(traceroute -4 -m 1 privateinternetaccess.com | tail -n 1 | awk '{print $2}')
   # Very basic sanity check - make sure it matches 10.x.x.1
-  if ! echo "$vpn_ip" | grep '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' > /dev/null; then
+  if ! echo "$api_ip" | grep '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' > /dev/null; then
     echo "$(date): Automatically getting API IP failed."
     fatal_error
   fi
-  echo "$(date): Using $vpn_ip as API endpoint"
+  echo "$(date): Using $api_ip as API endpoint"
 fi
 
 # If we haven't been passed a cn, then use the cn the server is claiming
 if [ -z "$vpn_cn" ]; then
-  possible_cn=$(curl --insecure --verbose --head https://$vpn_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
+  possible_cn=$(curl --insecure --verbose --head https://$api_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
   # Sanity check - match 'lowercase123'
   if echo "$possible_cn" | grep '[a-z]*[0-9]\{3\}' > /dev/null; then
     echo "$(date): Using $possible_cn as cn"
@@ -180,14 +180,14 @@ if [ -n "$vpn_cn" ]; then
       fatal_error
     fi
   fi
-  verify="--cacert $cacert --resolve $vpn_cn:19999:$vpn_ip"
+  verify="--cacert $cacert --resolve $vpn_cn:19999:$api_ip"
   pf_host="$vpn_cn"
   echo "$(date): Verifying API requests. CN: $vpn_cn"
 else
   # For simplicity, use '--insecure' by default, though show a warning
   echo "$(date): API requests may be insecure. Specify a common name using -n."
   verify="--insecure"
-  pf_host="$vpn_ip"
+  pf_host="$api_ip"
 fi
 
 # Main loop
