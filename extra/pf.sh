@@ -11,11 +11,12 @@
 #  -n <vpn common name>         (Optional) Common name of the VPN server (eg. "london411")
 #                               An 'educated guess' is made if not specified.
 #  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
+#  -f <interface name>          (Optional) Network interface to use for requests
 #
 # Examples:
 #   pf.sh -t ~/.pia-token
 #   pf.sh -t ~/.pia-token -n sydney402
-#   pf.sh -t ~/.pia-token -i 10.13.14.1 -n london416 -p /port.dat
+#   pf.sh -t ~/.pia-token -i 10.13.14.1 -n london416 -p /port.dat -f wg0
 #
 # For port forwarding on the next-gen network, we need a valid PIA auth token (see pia-auth.sh) and to know the address to send API requests to.
 #
@@ -63,10 +64,11 @@ usage() {
                               An 'educated guess' is made if not specified.
  -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")
                               An 'educated guess' is made if not specified.
- -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts"
+ -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
+ -f <interface name>          (Optional) Network interface to use for requests"
 }
 
-while getopts ":t:i:n:c:p:" args; do
+while getopts ":t:i:n:c:p:f:" args; do
   case ${args} in
     t)
       tokenfile=$OPTARG
@@ -83,11 +85,15 @@ while getopts ":t:i:n:c:p:" args; do
     p)
       portfile=$OPTARG
       ;;
+    f)
+      iface_tr="-i $OPTARG"
+      iface_curl="--interface $OPTARG"
+      ;;
   esac
 done
 
 bind_port () {
-  pf_bind=$(curl --get --silent --show-error \
+  pf_bind=$(curl --get --silent --show-error $iface_curl \
       --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
       --data-urlencode "payload=$pf_payload" \
       --data-urlencode "signature=$pf_getsignature" \
@@ -101,7 +107,7 @@ bind_port () {
 }
 
 get_sig () {
-  pf_getsig=$(curl --get --silent --show-error \
+  pf_getsig=$(curl --get --silent --show-error $iface_curl \
     --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
     --data-urlencode "token=$(cat $tokenfile)" \
     $verify \
@@ -147,7 +153,7 @@ fi
 # Ideally we'd have been provided a cn, in case we 'guess' the wrong IP.
 # Must be a better way to do this.
 if [ -z "$api_ip" ]; then
-  api_ip=$(traceroute -4 -m 1 privateinternetaccess.com | tail -n 1 | awk '{print $2}')
+  api_ip=$(traceroute -4 -m 1 $iface_tr privateinternetaccess.com | tail -n 1 | awk '{print $2}')
   # Very basic sanity check - make sure it matches 10.x.x.1
   if ! echo "$api_ip" | grep '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' > /dev/null; then
     echo "$(date): Automatically getting API IP failed."
@@ -158,7 +164,7 @@ fi
 
 # If we haven't been passed a cn, then use the cn the server is claiming
 if [ -z "$vpn_cn" ]; then
-  possible_cn=$(curl --insecure --verbose --head https://$api_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
+  possible_cn=$(curl $iface_curl --insecure --verbose --head https://$api_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
   # Sanity check - match 'lowercase123'
   if echo "$possible_cn" | grep '[a-z]*[0-9]\{3\}' > /dev/null; then
     echo "$(date): Using $possible_cn as cn"
@@ -173,7 +179,7 @@ if [ -n "$vpn_cn" ]; then
     echo "$(date): Getting PIA ca cert"
     cacert=$(mktemp)
     cacert_istemp=1
-    if ! curl --get --silent --max-time "$curl_max_time" --output "$cacert" \
+    if ! curl $iface_curl --get --silent --max-time "$curl_max_time" --output "$cacert" \
       --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
       "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
       echo "(date): Failed to download PIA ca cert"
