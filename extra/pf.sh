@@ -12,6 +12,8 @@
 #                               An 'educated guess' is made if not specified.
 #  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
 #  -f <interface name>          (Optional) Network interface to use for requests
+#  -s </path/to/script.sh>      (Optional) Run a script on success.
+#                               The forwarded port is passed as an argument.
 #
 # Examples:
 #   pf.sh -t ~/.pia-token
@@ -65,10 +67,12 @@ usage() {
  -n <vpn common name>         (Optional) Common name of the VPN server (eg. \"london411\")
                               An 'educated guess' is made if not specified.
  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
- -f <interface name>          (Optional) Network interface to use for requests"
+ -f <interface name>          (Optional) Network interface to use for requests
+ -s </path/to/script.sh>      (Optional) Run a script on success.
+                              The forwarded port is passed as an argument."
 }
 
-while getopts ":t:i:n:c:p:f:" args; do
+while getopts ":t:i:n:c:p:f:s:" args; do
   case ${args} in
     t)
       tokenfile=$OPTARG
@@ -88,6 +92,9 @@ while getopts ":t:i:n:c:p:f:" args; do
     f)
       iface_tr="-i $OPTARG"
       iface_curl="--interface $OPTARG"
+      ;;
+    s)
+      post_script=$OPTARG
       ;;
   esac
 done
@@ -212,9 +219,13 @@ while true; do
     bind_port
     echo "$(date): Server accepted PF bind"
     echo "$(date): Forwarding on port $pf_port"
+    # Run another script if requested
+    [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port"
     echo "$(date): Rebind interval: $pf_bindinterval seconds"
     # Dump port here if requested
     [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo $pf_port > "$portfile"
+    echo "$(date): This script should remain running to keep the forwarded port alive"
+    echo "$(date): Press Ctrl+C to exit"
   fi
   sleep $pf_bindinterval &
   wait $!
