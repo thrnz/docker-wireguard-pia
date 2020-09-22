@@ -23,7 +23,8 @@
 # The public key for verifying the server list can be found here:
 #  https://github.com/pia-foss/desktop/blob/122710c6ada5db83620c63faff2d805ea52d7f40/daemon/src/environment.cpp#L30
 #
-# Wireguard is not supported outside of the official PIA app at this stage. Use at your own risk!
+# As of Sep 2020, PIA have released their own standalone scripts for use outside of their app:
+# https://github.com/pia-foss/manual-connections
 
 fatal_error () {
   cleanup

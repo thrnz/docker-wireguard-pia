@@ -27,8 +27,8 @@ The rest are optional:
 |```EXIT_ON_FATAL=0/1```|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behavior if other containers are sharing the connection.
 
 ## Notes
-* PIA doesn't support Wireguard connections outside of their official app at this stage (June 2020), so use at your own risk. YMMV.
 * Based on what was found in the source code to the PIA desktop app.
+* As of Sep 2020, PIA have [released](https://github.com/pia-foss/manual-connections) scripts for using Wireguard outside of their app.
 * Only tested on a Debian Buster host. May or may not work as expected on other hosts.
 * PIA username/password is only used on the first run. A persistent auth token is generated and will be re-used for future runs.
 * Persistent data (auth token and server list) is stored in /pia.

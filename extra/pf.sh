@@ -33,10 +33,12 @@
 #
 # This script has been tested with Wireguard and briefly with OpenVPN
 #
-# PIA haven't provided steps for port forwarding on the 'next-gen' network outside of the official app at this stage (Aug 2020).
 # This script is based on what was found in the source code to their desktop app (v.2.2.0):
 # https://github.com/pia-foss/desktop/blob/2.2.0/daemon/src/portforwardrequest.cpp
 # Use at your own risk!
+#
+# As of Sep 2020, PIA have released their own standalone scripts for use outside of their app:
+# https://github.com/pia-foss/manual-connections
 #
 # Feel free to take apart and use in your own projects. A link back to the original might be nice though.
 
