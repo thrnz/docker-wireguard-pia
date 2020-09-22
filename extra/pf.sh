@@ -74,7 +74,7 @@ usage() {
                               The forwarded port is passed as an argument."
 }
 
-while getopts ":t:i:n:c:p:f:s:" args; do
+while getopts ":t:i:n:c:p:f:s:r:" args; do
   case ${args} in
     t)
       tokenfile=$OPTARG
@@ -98,6 +98,9 @@ while getopts ":t:i:n:c:p:f:s:" args; do
     s)
       post_script=$OPTARG
       ;;
+    r)
+      persist_file=$OPTARG
+      ;;
   esac
 done
 
@@ -110,22 +113,31 @@ bind_port () {
       "https://$pf_host:19999/bindPort")
   if [ "$(echo $pf_bind | jq -r .status)" != "OK" ]; then
     echo "$(date): bindPort error"
-    echo $pf_bind
-    fatal_error
+    echo "$pf_bind"
+    return 1
   fi
+  return 0
 }
 
 get_sig () {
-  pf_getsig=$(curl --get --silent --show-error $iface_curl \
-    --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
-    --data-urlencode "token=$(cat $tokenfile)" \
-    $verify \
-    "https://$pf_host:19999/getSignature")
+  # Attempt to reuse our previous port if requested
+  if [ -n "$persist_file" ] && [ -r "$persist_file" ]; then
+    echo "$(date) Reusing previous PF token"
+    pf_getsig=$(cat "$persist_file")
+  else
+    pf_getsig=$(curl --get --silent --show-error $iface_curl \
+      --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
+      --data-urlencode "token=$(cat $tokenfile)" \
+      $verify \
+      "https://$pf_host:19999/getSignature")
+  fi
   if [ "$(echo $pf_getsig | jq -r .status)" != "OK" ]; then
     echo "$(date): getSignature error"
-    echo $pf_getsig
+    echo "$pf_getsig"
     fatal_error
   fi
+  # Save response for re-use if requested
+  [ -n "$persist_file" ] && echo "$pf_getsig" > "$persist_file"
   pf_payload=$(echo $pf_getsig | jq -r .payload)
   pf_getsignature=$(echo $pf_getsig | jq -r .signature)
   pf_port=$(echo $pf_payload | base64 -d | jq -r .port)
@@ -217,8 +229,18 @@ while true; do
       pf_firstrun=0
     fi
     get_sig
+    if ! bind_port; then
+      # If we attempted to use a previous port and binding failed then discard it and retry
+      if [ -n "$persist_file" ] && [ -w "$persist_file" ]; then
+        echo "$(date): Discarding previous PF token and trying again"
+        rm "$persist_file"
+        get_sig
+        bind_port || fatal_error
+      else
+        fatal_error
+      fi
+    fi
     echo "$(date): Obtained PF token. Expires at $pf_token_expiry_raw"
-    bind_port
     echo "$(date): Server accepted PF bind"
     echo "$(date): Forwarding on port $pf_port"
     # Run another script if requested
@@ -231,6 +253,6 @@ while true; do
   fi
   sleep $pf_bindinterval &
   wait $!
-  bind_port
+  bind_port || fatal_error
 done
 

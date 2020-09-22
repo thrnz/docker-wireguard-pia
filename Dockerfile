@@ -15,6 +15,7 @@ ENV LOCAL_NETWORK= \
     VPNDNS= \
     USEMODERN=1 \
     PORT_FORWARDING=0 \
+    PORT_PERSIST=0 \
     EXIT_ON_FATAL=0
 
 # Modify wg-quick so it doesn't die without --privileged

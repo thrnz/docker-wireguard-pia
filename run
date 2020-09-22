@@ -25,6 +25,8 @@ CURL_MAX_TIME=15
 
 pia_cacrt="/rsa_4096.crt"
 
+pf_persistfile="$CONFIGDIR/portsig.json"
+
 [ $USEMODERN -eq 1 ] && DATAFILE="$CONFIGDIR/data_modern.json"
 
 # Handle shutdown behavior
@@ -237,7 +239,12 @@ echo
 # Use standalone script for port forwarding
 port_forward () {
   echo "$(date): Starting port forward script"
-  /scripts/pf.sh -t "$TOKENFILE" -i "$SERVER_VIP" -n "$WG_DNS" -p "$PORTFILE" -c "$pia_cacrt" &
+  # Try to use a persistent port if requested
+  if [ $PORT_PERSIST -eq 1 ]; then
+    /scripts/pf.sh -t "$TOKENFILE" -i "$SERVER_VIP" -n "$WG_DNS" -p "$PORTFILE" -c "$pia_cacrt" -r "$pf_persistfile" &
+  else
+    /scripts/pf.sh -t "$TOKENFILE" -i "$SERVER_VIP" -n "$WG_DNS" -p "$PORTFILE" -c "$pia_cacrt" &
+  fi
   pf_pid=$!
   # Standalone script doesn't handle iptables rules, so do that here
   local pf_port=0
