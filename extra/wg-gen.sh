@@ -26,9 +26,15 @@
 # As of Sep 2020, PIA have released their own standalone scripts for use outside of their app:
 # https://github.com/pia-foss/manual-connections
 
+# Exit codes:
+# 0: Success
+# 1: Anything else
+# 2: Auth error
+# 3: Invalid server location
+
 fatal_error () {
   cleanup
-  echo "Fatal error"
+  [ -n "$1" ] && exit $1
   exit 1
 }
 
@@ -54,22 +60,22 @@ parse_args() {
   while getopts ":t:l:o:k:d:a" args; do
     case ${args} in
       t)
-        tokenfile=$OPTARG
+        tokenfile="$OPTARG"
         ;;
       l)
-        location=$OPTARG
+        location="$OPTARG"
         ;;
       o)
-        wg_out=$OPTARG
+        wg_out="$OPTARG"
         ;;
       c)
-        pia_cacert=$OPTARG
+        pia_cacert="$OPTARG"
         ;;
       k)
-        pia_pubkey=$OPTARG
+        pia_pubkey="$OPTARG"
         ;;
       d)
-        dns=$OPTARG
+        dns="$OPTARG"
         ;;
       a)
         list_and_exit=1
@@ -104,7 +110,7 @@ get_servers() {
   totalservers=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | length' "$servers_json")
   if ! [[ "$totalservers" =~ ^[0-9]+$ ]] || [ "$totalservers" -eq 0 ] 2>/dev/null; then
     echo "Location \"$location\" not found. Run with -a to list valid servers."
-    fatal_error
+    fatal_error 3
   fi
   serverindex=$(( $RANDOM % $totalservers))
   wg_cn=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].cn' "$servers_json")
@@ -134,6 +140,7 @@ get_wgconf () {
     --resolve "$wg_cn:$wg_port:$wg_ip" \
     "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
 
+  [ "$(jq -r .status "$addkey_response")" == "ERROR" ] && [ "$(jq -r .message "$addkey_response")" == "Login failed!" ] && echo "Auth failed" && fatal_error 2
   [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error
 
   peer_ip="$(jq -r .peer_ip "$addkey_response")"
@@ -161,7 +168,7 @@ DNS = $dns
 
 [Peer]
 PublicKey = $server_public_key
-AllowedIPs = 0.0.0.0/0, ::/0
+AllowedIPs = 0.0.0.0/0
 Endpoint = $server_ip:$server_port
 CONFF
 
@@ -193,5 +200,6 @@ get_wgconf
 [ "$port_forward_avail" -eq 1 ] && echo "Port forwarding is available at this location"
 
 echo "Successfully generated $wg_out"
+
 cleanup
 exit 0

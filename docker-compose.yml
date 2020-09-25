@@ -18,7 +18,6 @@ services:
             - PASS=xxxxxxxxxxxxxxxx
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
-            - USEMODERN=1
             - PORT_FORWARDING=1
         sysctls:
             # wg-quick fails to set this without --privileged, so set it here instead if needed
