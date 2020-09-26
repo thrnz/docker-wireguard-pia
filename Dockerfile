@@ -16,7 +16,8 @@ ENV LOCAL_NETWORK= \
     USEMODERN=1 \
     PORT_FORWARDING=0 \
     PORT_PERSIST=0 \
-    EXIT_ON_FATAL=0
+    EXIT_ON_FATAL=0 \
+    FIREWALL=1
 
 # Modify wg-quick so it doesn't die without --privileged
 # Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
@@ -33,7 +34,7 @@ COPY ./RegionsListPubKey.pem /RegionsListPubKey.pem
 WORKDIR /scripts
 
 # Copy scripts to containers
-COPY pre-up.sh post-up.sh pre-down.sh post-down.sh run ./extra/pf.sh /scripts/
+COPY run pf_success.sh ./extra/pf.sh ./extra/pia-auth.sh ./extra/wg-gen.sh /scripts/
 RUN chmod 755 /scripts/*
 
 # Store persistent PIA stuff here (auth token, server list)

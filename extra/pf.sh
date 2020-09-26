@@ -143,7 +143,7 @@ get_sig () {
   pf_port=$(echo $pf_payload | base64 -d | jq -r .port)
   pf_token_expiry_raw=$(echo $pf_payload | base64 -d | jq -r .expires_at)
   # Coreutils date doesn't need format specified (-D), whereas BusyBox does
-  if date --help 2>&1 /dev/null | grep -i 'busybox' > /dev/null; then
+  if date --help 2>&1 /dev/null | grep -iq 'busybox'; then
     pf_token_expiry=$(date -D %Y-%m-%dT%H:%M:%S --date="$pf_token_expiry_raw" +%s)
   else
     pf_token_expiry=$(date --date="$pf_token_expiry_raw" +%s)
@@ -176,7 +176,7 @@ fi
 if [ -z "$api_ip" ]; then
   api_ip=$(traceroute -4 -m 1 $iface_tr privateinternetaccess.com | tail -n 1 | awk '{print $2}')
   # Very basic sanity check - make sure it matches 10.x.x.1
-  if ! echo "$api_ip" | grep '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' > /dev/null; then
+  if ! echo "$api_ip" | grep -q '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1'; then
     echo "$(date): Automatically getting API IP failed."
     fatal_error
   fi
@@ -187,7 +187,7 @@ fi
 if [ -z "$vpn_cn" ]; then
   possible_cn=$(curl $iface_curl --insecure --verbose --head https://$api_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
   # Sanity check - match 'lowercase123'
-  if echo "$possible_cn" | grep '[a-z]*[0-9]\{3\}' > /dev/null; then
+  if echo "$possible_cn" | grep -q '[a-z]*[0-9]\{3\}'; then
     echo "$(date): Using $possible_cn as cn"
     vpn_cn="$possible_cn"
   fi

@@ -1,51 +1,45 @@
 #!/bin/bash
 
-# Block everything by default
-ip6tables -P OUTPUT DROP &> /dev/null
-ip6tables -P INPUT DROP &> /dev/null
-ip6tables -P FORWARD DROP &> /dev/null
-iptables -P OUTPUT DROP &> /dev/null
-iptables -P INPUT DROP &> /dev/null
-iptables -P FORWARD DROP &> /dev/null
+if [ $FIREWALL -eq 1 ]; then
+  # Block everything by default
+  ip6tables -P OUTPUT DROP &> /dev/null
+  ip6tables -P INPUT DROP &> /dev/null
+  ip6tables -P FORWARD DROP &> /dev/null
+  iptables -P OUTPUT DROP &> /dev/null
+  iptables -P INPUT DROP &> /dev/null
+  iptables -P FORWARD DROP &> /dev/null
 
-# Temporarily allow DNS queries
-iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A INPUT -i lo -j ACCEPT
-iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+  # Temporarily allow DNS queries
+  iptables -A OUTPUT -o lo -j ACCEPT
+  iptables -A INPUT -i lo -j ACCEPT
+  iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 
-CONFIGDIR="/pia"
-TOKENFILE="$CONFIGDIR/.token"
-DATAFILE="$CONFIGDIR/data.json"
+  # We also need to temporarily allow the following
+  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+  iptables -A OUTPUT -p tcp --dport 1337 -j ACCEPT
+fi
 
-SHAREDIR="/pia-shared"
-PORTFILE="$SHAREDIR/port.dat"
+configdir="/pia"
+tokenfile="$configdir/.token"
+pf_persistfile="$configdir/portsig.json"
 
-CURL_MAX_TIME=15
+sharedir="/pia-shared"
+portfile="$sharedir/port.dat"
 
 pia_cacrt="/rsa_4096.crt"
-
-pf_persistfile="$CONFIGDIR/portsig.json"
-
-[ $USEMODERN -eq 1 ] && DATAFILE="$CONFIGDIR/data_modern.json"
+wg_conf="/etc/wireguard/wg0.conf"
 
 # Handle shutdown behavior
 finish () {
     [ $PORT_FORWARDING -eq 1 ] && pkill -f 'pf.sh'
-    echo "$(date): Shutting down Wireguard"
-    [ -w "$PORTFILE" ] && rm "$PORTFILE"
+    echo "$(date): Shutting down WireGuard"
+    [ -w "$portfile" ] && rm "$portfile"
     wg-quick down wg0
     exit 0
 }
 
 trap finish SIGTERM SIGINT SIGQUIT
-
-# Allow an individual host temporarily:
-# tmp_allow_host HOST PORT
-tmp_allow_host () {
-    IP=$(getent hosts $1 | awk '{ print $1 }' | head -1)
-    iptables -A OUTPUT -p tcp --dport $2 --destination $IP  -j ACCEPT
-}
 
 # All done. Sleep and wait for termination.
 now_sleep () {
@@ -66,211 +60,95 @@ fatal_error () {
 get_auth_token () {
     [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
     [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
-    echo "$(date): Getting new auth token"
-    tmp_allow_host "www.privateinternetaccess.com" 443
-    TOK=$(curl --silent --show-error --request POST --max-time $CURL_MAX_TIME \
-        --header "Content-Type: application/json" \
-        --resolve "www.privateinternetaccess.com:443:$IP" \
-        --data "{\"username\":\"$USER\",\"password\":\"$PASS\"}" \
-        "https://www.privateinternetaccess.com/api/client/v2/token" | jq -r '.token')
-    [ -z "$TOK" ] && echo "$(date): Failed to acquire new auth token" && fatal_error
-    touch "$TOKENFILE"
-    chmod 600 "$TOKENFILE"
-    echo "$TOK" > "$TOKENFILE"
-    new_auth_token=1
+    echo "$(date): Generating auth token"
+    /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"
+    [ $? -ne 0 ] && echo "$(date): Failed to acquire new auth token" && fatal_error
+    chmod 600 "$tokenfile"
 }
 
-# The PIA desktop app uses a public key to verify server list downloads. May as well do the same.
-# https://github.com/pia-foss/desktop/blob/b701601bfa806621a41039514bbb507e250466ec/common/src/jsonrefresher.cpp#L93
-verify_serverlist ()
-{
-    echo "$SERVERLIST" | head -n 1 | tr -d '\n' > /tmp/servers.json
-    echo "$SERVERLIST" | tail -n +3 | base64 -d > /tmp/servers.sig
-    if openssl dgst -sha256 -verify /RegionsListPubKey.pem -signature /tmp/servers.sig /tmp/servers.json; then
-        cp /tmp/servers.json $DATAFILE
-    else
-        echo "$(date): Failed to verify server list"
-        fatal_error
-    fi
-}
+[ -w "$portfile" ] && rm "$portfile"
 
-get_servers () {
-    if [ $USEMODERN -eq 1 ]; then
-        # https://github.com/pia-foss/mobile-common-regions/blob/master/regions/src/commonMain/kotlin/com/privateinternetaccess/common/regions/internals/RegionsCommon.kt#L23
-        if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
-            echo "$(date): Fetching and verifying modern PIA server list"
-            tmp_allow_host "serverlist.piaservers.net" 443
-            SERVERLIST=$(curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "serverlist.piaservers.net:443:$IP" \
-                "https://serverlist.piaservers.net/vpninfo/servers/new")
-            verify_serverlist
-        fi
+# No LOC supplied
+[ -z "$LOC" ] && /scripts/wg-gen.sh -a && fatal_error
 
-        # Some locations have multiple servers available. Pick a random one.
-        TOTALSERVERS=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | length' $DATAFILE)
-        if ! [[ "$TOTALSERVERS" =~ ^[0-9]+$ ]] || [ $TOTALSERVERS -eq 0 ] 2>/dev/null; then
-            echo "$(date): No matching servers found. Valid servers are:"
-            jq -r '.regions | .[] | .id' "$DATAFILE"
-            fatal_error
-        fi
-        SERVERINDEX=$(( $RANDOM % $TOTALSERVERS))
-        WG_SERIAL=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].cn' $DATAFILE)
-        WG_HOST=$(jq -r '.regions | .[] | select(.id=="'$LOC'") | .servers.wg | .['$SERVERINDEX'].ip' $DATAFILE)
-        WG_PORT=$(jq -r '.groups.wg | .[0] | .ports | .[0]' $DATAFILE)
-        WG_DNS=$WG_SERIAL
+[ ! -r "$tokenfile" ] && get_auth_token
 
-        [ $(jq -r '.regions | .[] | select(.id=="'$LOC'") | .port_forward' $DATAFILE) == "true" ] && PORT_FORWARD_AVAIL=1
+# Generate wg0.conf
+/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS"
+result=$?
+if [ "$result" -eq 2 ]; then
+  # Reauth and retry if auth failed
+  get_auth_token
+  /scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" || fatal_error
+elif [ "$result" -eq 3 ]; then
+  # Location not found
+  echo "$(date): Location $LOC not found"
+  /scripts/wg-gen.sh -a
+  fatal_error
+elif [ "$result" -ne 0 ]; then
+  echo "$(date): Failed to generate WireGuard config"
+  fatal_error
+fi
 
-        [ -z "$WG_HOST" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && fatal_error
-
-    else
-        # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/daemon.cpp#L77
-        # PIA desktop client redownloads server list on launch and then every 10mins.
-        # May as well mimic that behavior.
-        if [ ! -r "$DATAFILE" ] || [ $(($(date +%s) - $(date +%s -r $DATAFILE))) -gt 600 ]; then
-            echo "$(date): Fetching and verifying legacy PIA server list"
-            tmp_allow_host "www.privateinternetaccess.com" 443
-            SERVERLIST=$(curl --silent --show-error --max-time $CURL_MAX_TIME --resolve "www.privateinternetaccess.com:443:$IP" \
-                "https://www.privateinternetaccess.com/vpninfo/servers?version=1001&client=x-alpha")
-            verify_serverlist
-        fi
-        if [ -z "$LOC" ] || [ "$(jq -r .$LOC "$DATAFILE")" == "null" ]; then
-            echo "$(date): No matching servers found. Valid servers are:"
-            jq keys "$DATAFILE"
-            fatal_error
-        fi
-
-        WG_URL=$(jq -r ".$LOC.wireguard.host" "$DATAFILE")
-        WG_SERIAL=$(jq -r ".$LOC.wireguard.serial" "$DATAFILE")
-        WG_HOST=$(cut -d: -f1 <<< "$WG_URL")
-        WG_PORT=$(cut -d: -f2 <<< "$WG_URL")
-        WG_DNS=$(jq -r ".$LOC.dns" "$DATAFILE")
-
-        [ -z "$WG_URL" ] && echo "$(date): Wireguard not supported in the selected region ($LOC)" && fatal_error
-    fi
-}
-
-get_wgconf () {
-    CLIENT_PRIVATE_KEY="$(wg genkey)"
-    CLIENT_PUBLIC_KEY=$(wg pubkey <<< "$CLIENT_PRIVATE_KEY")
-
-    # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
-    iptables -A OUTPUT -p tcp --dport $WG_PORT --destination $WG_HOST  -j ACCEPT
-    echo "$(date): Registering public key with PIA endpoint $LOC - $WG_DNS ($WG_HOST)"
-
-    # Try to recover from an expired/invalid auth token if we haven't yet got a new one
-    while true; do
-      ADDKEY_RESPONSE=$(curl --get --silent \
-          --data-urlencode "pubkey=$CLIENT_PUBLIC_KEY" \
-          --data-urlencode "pt=$TOK" \
-          --cacert "$pia_cacrt" \
-          --resolve "$WG_SERIAL:$WG_PORT:$WG_HOST" \
-          "https://$WG_SERIAL:$WG_PORT/addKey")
-      [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" == "OK" ] && break
-      if [ $new_auth_token -eq 0 ] && [ "$(echo $ADDKEY_RESPONSE | jq -r .status)" == "ERROR" ] && [ "$(echo $ADDKEY_RESPONSE | jq -r .message)" == "Login failed!" ]; then
-        echo "$(date): Auth failed, regenerating token"
-        get_auth_token
-        continue
-      fi
-      echo "$(date): WG key registration failed" && echo $ADDKEY_RESPONSE && fatal_error
-    done
-
-    PEER_IP="$(echo $ADDKEY_RESPONSE | jq -r .peer_ip)"
-    SERVER_PUBLIC_KEY="$(echo $ADDKEY_RESPONSE | jq -r .server_key)"
-    SERVER_IP="$(echo $ADDKEY_RESPONSE | jq -r .server_ip)"
-    SERVER_VIP="$(echo $ADDKEY_RESPONSE | jq -r .server_vip)"
-    SERVER_PORT="$(echo $ADDKEY_RESPONSE | jq -r .server_port)"
-
-    WGCONF="/etc/wireguard/wg0.conf"
-    echo "$(date): Generating $WGCONF"
-
-    if [ -z "$VPNDNS" ]; then
-        VPNDNS=$(echo $ADDKEY_RESPONSE | jq -r '.dns_servers[0:2]' | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
-        echo "$(date): Using PIA DNS servers: $VPNDNS"
-    else
-        echo "$(date): Using custom DNS servers: $VPNDNS"
-    fi
-
-    cat <<CONFF > "$WGCONF"
-#$WG_DNS
-[Interface]
-PrivateKey = $CLIENT_PRIVATE_KEY
-Address = $PEER_IP
-PreUp = /scripts/pre-up.sh
-PostUp = /scripts/post-up.sh && iptables -A OUTPUT -o %i -j ACCEPT && iptables -I OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
-PreDown = /scripts/pre-down.sh && iptables -D OUTPUT -o %i -j ACCEPT && iptables -D OUTPUT -m mark --mark \$(wg show %i fwmark) -j ACCEPT
-PostDown = /scripts/post-down.sh
-DNS = $VPNDNS
-
-[Peer]
-PublicKey = $SERVER_PUBLIC_KEY
-AllowedIPs = 0.0.0.0/0
-Endpoint = $SERVER_IP:$SERVER_PORT
-CONFF
-
-    [ $KEEPALIVE -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$WGCONF"
-}
-
-PORT_FORWARD_AVAIL=0
-new_auth_token=0
-
-[ -w "$PORTFILE" ] && rm "$PORTFILE"
-
-[ -r "$TOKENFILE" ] && TOK=$(< "$TOKENFILE")
-[ -z "$TOK" ] && get_auth_token
-
-get_servers
-get_wgconf
-
-# Remove any lingering setup iptables rules
-iptables -F OUTPUT
-iptables -F INPUT
-
-[ $PORT_FORWARD_AVAIL -eq 1 ] && echo "$(date): Port forwarding is available on this server"
+# Add PersistentKeepalive if KEEPALIVE is set
+[ $KEEPALIVE -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
 # Bring up Wireguard interface
-echo "$(date): Bringing up Wireguard interface wg0"
-wg-quick up wg0
+echo "$(date): Bringing up WireGuard interface wg0"
+wg-quick up wg0 || fatal_error
 
 # Print out wg interface info
 echo
 wg
 echo
 
-# Use standalone script for port forwarding
-port_forward () {
+echo "$(date): WireGuard successfully started"
+
+if [ $FIREWALL -eq 1 ]; then
+  iptables -F OUTPUT
+  iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -A OUTPUT -o lo -j ACCEPT
+  iptables -F INPUT
+  iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -A INPUT -i lo -j ACCEPT
+
+  # Allow docker network input/output
+  docker_network="$(ip -o addr show dev eth0|
+          awk '$3 == "inet" {print $4}')"
+  iptables -A OUTPUT -o eth0 --destination $docker_network -j ACCEPT
+  iptables -A INPUT -i eth0 --source $docker_network -j ACCEPT
+
+  # Allow WG stuff
+  iptables -A OUTPUT -o wg0 -j ACCEPT
+  iptables -I OUTPUT -m mark --mark $(wg show wg0 fwmark) -j ACCEPT
+
+  echo "$(date): Firewall enabled: Blocking non-WireGuard traffic"
+fi
+
+#Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
+if [ -n "$LOCAL_NETWORK" ]; then
+    for range in $LOCAL_NETWORK; do
+        if [ $FIREWALL -eq 1 ]; then
+            echo "$(date): Allowing network access to $range"
+            iptables -A OUTPUT -o eth0 --destination $range -j ACCEPT
+            iptables -A INPUT -i eth0 --source $range -j ACCEPT
+        fi
+        echo "$(date): Adding route to $range"
+        ip route add $range via $(ip route show 0.0.0.0/0 dev eth0 | cut -d\  -f3)
+    done
+fi
+
+# Setup port forwarding if requested and available
+pf_api_ip=$(cat "$wg_conf" | grep '#pf api' | sed 's/#pf api ip: \(.*\)/\1/')
+pf_cn=$(cat "$wg_conf" | grep '#cn: ' | sed 's/#cn: \(.*\)/\1/')
+if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
   echo "$(date): Starting port forward script"
   # Try to use a persistent port if requested
   if [ $PORT_PERSIST -eq 1 ]; then
-    /scripts/pf.sh -t "$TOKENFILE" -i "$SERVER_VIP" -n "$WG_DNS" -p "$PORTFILE" -c "$pia_cacrt" -r "$pf_persistfile" &
+    /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" &
   else
-    /scripts/pf.sh -t "$TOKENFILE" -i "$SERVER_VIP" -n "$WG_DNS" -p "$PORTFILE" -c "$pia_cacrt" &
+    /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" &
   fi
-  pf_pid=$!
-  # Standalone script doesn't handle iptables rules, so do that here
-  local pf_port=0
-  local pf_firstrun=1
-  local pf_interval=15
-  while true; do
-    if [ -r "$PORTFILE" ]; then
-      local new_port=$(cat "$PORTFILE")
-      if [ "$pf_port" -ne "$new_port" ]; then
-        if [ $pf_firstrun -ne 1 ]; then
-          iptables -D INPUT -p tcp -i wg0 --dport $new_port -j ACCEPT
-          iptables -D INPUT -p udp -i wg0 --dport $new_port -j ACCEPT
-          echo "$(date): Closing old port"
-          pf_firstrun=0
-        fi
-        iptables -A INPUT -p tcp -i wg0 --dport $new_port -j ACCEPT
-        iptables -A INPUT -p udp -i wg0 --dport $new_port -j ACCEPT
-        echo "$(date): Allowing incoming traffic on port $new_port"
-        pf_port="$new_port"
-      fi
-    fi
-    sleep $pf_interval &
-    wait $!
-  done
-}
-
-[ $PORT_FORWARDING -eq 1 ] && [ $USEMODERN -eq 1 ] && [ $PORT_FORWARD_AVAIL -eq 1 ] && port_forward
+fi
 
 now_sleep
