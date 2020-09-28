@@ -32,11 +32,11 @@ wg_conf="/etc/wireguard/wg0.conf"
 
 # Handle shutdown behavior
 finish () {
-    [ $PORT_FORWARDING -eq 1 ] && pkill -f 'pf.sh'
-    echo "$(date): Shutting down WireGuard"
-    [ -w "$portfile" ] && rm "$portfile"
-    wg-quick down wg0
-    exit 0
+  [ $PORT_FORWARDING -eq 1 ] && pkill -f 'pf.sh'
+  echo "$(date): Shutting down WireGuard"
+  [ -w "$portfile" ] && rm "$portfile"
+  wg-quick down wg0
+  exit 0
 }
 
 trap finish SIGTERM SIGINT SIGQUIT
@@ -58,12 +58,12 @@ fatal_error () {
 # Get a new auth token
 # Unsure how long an auth token will remain valid
 get_auth_token () {
-    [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
-    [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
-    echo "$(date): Generating auth token"
-    /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"
-    [ $? -ne 0 ] && echo "$(date): Failed to acquire new auth token" && fatal_error
-    chmod 600 "$tokenfile"
+  [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
+  [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
+  echo "$(date): Generating auth token"
+  /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"
+  [ $? -ne 0 ] && echo "$(date): Failed to acquire new auth token" && fatal_error
+  chmod 600 "$tokenfile"
 }
 
 [ -w "$portfile" ] && rm "$portfile"
@@ -127,20 +127,20 @@ fi
 
 #Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
 if [ -n "$LOCAL_NETWORK" ]; then
-    for range in $LOCAL_NETWORK; do
-        if [ $FIREWALL -eq 1 ]; then
-            echo "$(date): Allowing network access to $range"
-            iptables -A OUTPUT -o eth0 --destination $range -j ACCEPT
-            iptables -A INPUT -i eth0 --source $range -j ACCEPT
-        fi
-        echo "$(date): Adding route to $range"
-        ip route add $range via $(ip route show 0.0.0.0/0 dev eth0 | cut -d\  -f3)
-    done
+  for range in $LOCAL_NETWORK; do
+    if [ $FIREWALL -eq 1 ]; then
+      echo "$(date): Allowing network access to $range"
+      iptables -A OUTPUT -o eth0 --destination $range -j ACCEPT
+      iptables -A INPUT -i eth0 --source $range -j ACCEPT
+    fi
+    echo "$(date): Adding route to $range"
+    ip route add $range via $(ip route show 0.0.0.0/0 dev eth0 | cut -d\  -f3)
+  done
 fi
 
 # Setup port forwarding if requested and available
-pf_api_ip=$(cat "$wg_conf" | grep '#pf api' | sed 's/#pf api ip: \(.*\)/\1/')
-pf_cn=$(cat "$wg_conf" | grep '#cn: ' | sed 's/#cn: \(.*\)/\1/')
+pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
+pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
 if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
   echo "$(date): Starting port forward script"
   # Try to use a persistent port if requested

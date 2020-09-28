@@ -104,7 +104,7 @@ get_servers() {
   tail -n +3 "$servers_raw" | base64 -d > "$servers_sig"
   [ -n "$pia_pubkey" ] && verify_serverlist
 
-  [ "$list_and_exit" -eq 1 ] && echo "Available location ids:" && jq '.regions | .[] | {id, port_forward}' "$servers_json" && cleanup && exit 0
+  [ "$list_and_exit" -eq 1 ] && echo "Available location ids:" && jq '.regions | .[] | {name, id, port_forward}' "$servers_json" && cleanup && exit 0
 
   # Some locations have multiple servers available. Pick a random one.
   totalservers=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | length' "$servers_json")
