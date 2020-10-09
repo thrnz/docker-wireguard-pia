@@ -35,7 +35,11 @@ finish () {
   [ $PORT_FORWARDING -eq 1 ] && pkill -f 'pf.sh'
   echo "$(date): Shutting down WireGuard"
   [ -w "$portfile" ] && rm "$portfile"
-  wg-quick down wg0
+  if [ $WG_USERSPACE -eq 1 ]; then
+    WG_QUICK_USERSPACE_IMPLEMENTATION=wireguard-go wg-quick down wg0
+  else
+    wg-quick down wg0
+  fi
   exit 0
 }
 
@@ -95,7 +99,11 @@ fi
 
 # Bring up Wireguard interface
 echo "$(date): Bringing up WireGuard interface wg0"
-wg-quick up wg0 || fatal_error
+if [ $WG_USERSPACE -eq 1 ]; then
+  WG_QUICK_USERSPACE_IMPLEMENTATION=wireguard-go wg-quick up wg0 || fatal_error
+else
+  wg-quick up wg0 || fatal_error
+fi
 
 # Print out wg interface info
 echo
