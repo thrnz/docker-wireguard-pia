@@ -3,7 +3,7 @@
 A Docker container for using WireGuard with PIA.
 
 ## Requirements
-* The WireGuard kernel module must already be installed on the host.
+* The WireGuard kernel module must already be installed on the host. Alternatively a userspace implementation can be enabled using the WG_USERSPACE environment variable.
 * An active [PIA](https://www.privateinternetaccess.com) subscription.
 
 ## Config
@@ -26,6 +26,7 @@ The rest are optional:
 |```PORT_PERSIST=0/1```|Set to 1 to attempt to keep the same port forwarded when the container is restarted. The port number may persist for up to two months. Defaults to 0 (always acquire a new port number) if not specified.
 |```FIREWALL=0/1```|Whether to block non-WireGuard traffic. Defaults to 1 if not specified.
 |```EXIT_ON_FATAL=0/1```|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behaviour if other containers are sharing the connection.
+|```WG_USERSPACE=0/1```|If the host OS or host Linux kernel does not support wireguard (certain NAS systems), a userspace implementation ([wireguard-go](https://git.zx2c4.com/wireguard-go/about/)) can be enabled. Defaults to 0 if not specified.
 
 ## Notes
 * Based on what was found in the source code to the PIA desktop app.
@@ -37,6 +38,7 @@ The rest are optional:
 * An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is included.
 * Other containers can share the VPN connection using Docker's [```--net=container:xyz```](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [```network_mode: service:xyz```](https://docs.docker.com/compose/compose-file/#network_mode).
 * Standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) are available for use outside of Docker.
+* The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun) might be beneficial.
 
 ## Credits
 Some bits and pieces and ideas have been borrowed from the following:
