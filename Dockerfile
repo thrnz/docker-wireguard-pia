@@ -17,11 +17,15 @@ ENV LOCAL_NETWORK= \
     PORT_FORWARDING=0 \
     PORT_PERSIST=0 \
     EXIT_ON_FATAL=0 \
-    FIREWALL=1
+    FIREWALL=1 \
+    WG_USERSPACE=0
 
 # Modify wg-quick so it doesn't die without --privileged
 # Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
 RUN sed -i 's/cmd sysctl.*/set +e \&\& sysctl -q net.ipv4.conf.all.src_valid_mark=1 \&\& set -e/' /usr/bin/wg-quick
+
+# Install wireguard-go as a fallback if wireguard is not supported by the host OS or Linux kernel
+RUN apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing wireguard-go
 
 # Get the PIA CA cert
 ADD https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt /rsa_4096.crt

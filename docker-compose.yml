@@ -11,6 +11,9 @@ services:
             - NET_ADMIN
             # SYS_MODULE might not be needed with a 5.6+ kernel?
             - SYS_MODULE
+        # Mounting the tun device may be necessary for userspace implementations
+        #devices:
+        #  - /dev/net/tun:/dev/net/tun
         environment:
             #- LOCAL_NETWORK=192.168.1.0/24
             - LOC=swiss
@@ -19,6 +22,7 @@ services:
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
             - PORT_FORWARDING=1
+            #- WG_USERSPACE=1
         sysctls:
             # wg-quick fails to set this without --privileged, so set it here instead if needed
             - net.ipv4.conf.all.src_valid_mark=1
