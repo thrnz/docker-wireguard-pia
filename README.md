@@ -3,7 +3,7 @@
 A Docker container for using WireGuard with PIA.
 
 ## Requirements
-* Ideally the host must already support WireGuard, either natively or through a kernel module. If this is not possible, then a userspace implementation can be enabled using the WG_USERSPACE environment variable.
+* Ideally the host must already support WireGuard. Pre 5.6 kernels may need to have the module manually installed. If this is not possible, then a userspace implementation can be enabled using the WG_USERSPACE environment variable.
 * An active [PIA](https://www.privateinternetaccess.com) subscription.
 
 ## Config
