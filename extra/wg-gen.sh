@@ -98,7 +98,7 @@ verify_serverlist ()
 
 get_servers() {
   echo "Fetching next-gen PIA server list"
-  curl --silent --show-error --max-time "$curl_max_time" \
+  curl --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
               "https://serverlist.piaservers.net/vpninfo/servers/new" > "$servers_raw"
   head -n 1 "$servers_raw" | tr -d '\n' > "$servers_json"
   tail -n +3 "$servers_raw" | base64 -d > "$servers_sig"
@@ -127,7 +127,7 @@ get_wgconf () {
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
 
-  if ! curl --get --silent --max-time "$curl_max_time" --output "$pia_cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+  if ! curl --get --silent --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" --output "$pia_cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
     echo "Failed to download PIA ca cert"
     fatal_error
   fi
@@ -174,7 +174,10 @@ CONFF
 
 }
 
-curl_max_time=15
+curl_max_time=120
+curl_retry=5
+curl_retry_delay=15
+
 port_forward_avail=0
 list_and_exit=0
 
