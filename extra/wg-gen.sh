@@ -19,7 +19,7 @@
 #   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf -k ~/pubkey.pem -d 8.8.8.8,8.8.4.4
 #
 # Available servers can be found here:
-#  https://serverlist.piaservers.net/vpninfo/servers/new
+#  https://serverlist.piaservers.net/vpninfo/servers/v4
 # The public key for verifying the server list can be found here:
 #  https://github.com/pia-foss/desktop/blob/122710c6ada5db83620c63faff2d805ea52d7f40/daemon/src/environment.cpp#L30
 #
@@ -99,7 +99,7 @@ verify_serverlist ()
 get_servers() {
   echo "Fetching next-gen PIA server list"
   curl --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
-              "https://serverlist.piaservers.net/vpninfo/servers/new" > "$servers_raw"
+              "https://serverlist.piaservers.net/vpninfo/servers/v4" > "$servers_raw"
   head -n 1 "$servers_raw" | tr -d '\n' > "$servers_json"
   tail -n +3 "$servers_raw" | base64 -d > "$servers_sig"
   [ -n "$pia_pubkey" ] && verify_serverlist
