@@ -159,4 +159,18 @@ if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
   fi
 fi
 
+# Workaround a NAT bug when using Wireguard behind a particular Asus router by regularly changing the local port
+# Set env var CYCLE_PORTS to a space-separated list of ports to cycle through
+# Eg: CYCLE_PORTS=50001 50002 50003
+# Optionally set CYCLE_INTERVAL to number of seconds to use each port for. Defaults to 180 (3mins)
+if [ -n "$CYCLE_PORTS" ]; then
+  echo "$(date): Changing Wireguard's local port every ${CYCLE_INTERVAL:-180}s"
+  while true; do
+    for port in $CYCLE_PORTS; do
+      wg set wg0 listen-port $port
+      sleep "${CYCLE_INTERVAL:-180}" & wait $!
+    done
+  done
+fi
+
 now_sleep
