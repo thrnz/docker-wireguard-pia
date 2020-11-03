@@ -127,13 +127,13 @@ get_wgconf () {
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
 
-  if ! curl --get --silent --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" --output "$pia_cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+  if ! curl --get --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" --output "$pia_cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
     echo "Failed to download PIA ca cert"
     fatal_error
   fi
 
   echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
-  curl --get --silent \
+  curl --get --silent --show-error \
     --data-urlencode "pubkey=$client_public_key" \
     --data-urlencode "pt=$(cat $tokenfile)" \
     --cacert "$pia_cacert" \
