@@ -47,3 +47,5 @@ Some bits and pieces and ideas have been borrowed from the following:
 * https://github.com/dperson/openvpn-client
 * https://github.com/pia-foss/desktop
 * https://gist.github.com/triffid/da48f3c99f1ff334571ae49be80d591b
+* https://stackoverflow.com/a/54595564
+* https://github.com/ckulka/docker-multi-arch-example

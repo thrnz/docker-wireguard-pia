@@ -1,0 +1,16 @@
+image: thrnz/docker-wireguard-pia:latest
+manifests:
+  - image: thrnz/docker-wireguard-pia:amd64
+    platform:
+      architecture: amd64
+      os: linux
+  - image: thrnz/docker-wireguard-pia:arm32v6
+    platform:
+      architecture: arm
+      os: linux
+      variant: v6
+  - image: thrnz/docker-wireguard-pia:arm64v8
+    platform:
+      architecture: arm64
+      os: linux
+      variant: v8
