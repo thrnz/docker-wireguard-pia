@@ -135,9 +135,10 @@ if [ $FIREWALL -eq 1 ]; then
   echo "$(date): Firewall enabled: Blocking non-WireGuard traffic"
 fi
 
-#Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
+# Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
+# Accept comma seprated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
-  for range in $LOCAL_NETWORK; do
+  for range in ${LOCAL_NETWORK//,/ }; do
     if [ $FIREWALL -eq 1 ]; then
       echo "$(date): Allowing network access to $range"
       iptables -A OUTPUT -o eth0 --destination $range -j ACCEPT
