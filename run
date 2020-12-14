@@ -116,6 +116,10 @@ echo
 
 echo "$(date): WireGuard successfully started"
 
+# Add qdisc to wg0 if requested
+# eg: QDISC=cake bandwidth 20Mbit
+[ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
+
 if [ $FIREWALL -eq 1 ]; then
   iptables -F OUTPUT
   iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
