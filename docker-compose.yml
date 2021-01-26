@@ -15,13 +15,15 @@ services:
         #devices:
         #  - /dev/net/tun:/dev/net/tun
         environment:
-            #- LOCAL_NETWORK=192.168.1.0/24
+            # The following env vars are required:
             - LOC=swiss
             - USER=p0000000
             - PASS=xxxxxxxxxxxxxxxx
+            # The rest are optional:
+            #- LOCAL_NETWORK=192.168.1.0/24
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
-            - PORT_FORWARDING=1
+            #- PORT_FORWARDING=1
             #- WG_USERSPACE=1
         sysctls:
             # wg-quick fails to set this without --privileged, so set it here instead if needed
