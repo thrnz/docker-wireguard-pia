@@ -123,10 +123,13 @@ if [ $FIREWALL -eq 1 ]; then
   iptables -A INPUT -i lo -j ACCEPT
 
   # Allow docker network input/output
-  docker_network="$(ip -o addr show dev eth0|
-          awk '$3 == "inet" {print $4}')"
-  iptables -A OUTPUT -o eth0 --destination $docker_network -j ACCEPT
-  iptables -A INPUT -i eth0 --source $docker_network -j ACCEPT
+  for eth in `ls /sys/class/net | grep eth`; do
+    docker_network="$(ip -o addr show dev $eth|
+            awk '$3 == "inet" {print $4}')"
+    echo "$(date): Allowing network access to $docker_network on $eth"
+    iptables -A OUTPUT -o $eth --destination $docker_network -j ACCEPT
+    iptables -A INPUT -i $eth --source $docker_network -j ACCEPT
+  done
 
   # Allow WG stuff
   iptables -A OUTPUT -o wg0 -j ACCEPT
@@ -136,7 +139,7 @@ if [ $FIREWALL -eq 1 ]; then
 fi
 
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
-# Accept comma seprated as well as space separated list
+# Accept comma separated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ $FIREWALL -eq 1 ]; then
