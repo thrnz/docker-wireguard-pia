@@ -185,7 +185,7 @@ parse_args "$@"
 
 # Minimum args needed to run
 if [ "$list_and_exit" -eq 0 ]; then
-  if [ -z "$tokenfile" ] || [ -z "$location" ] || [ -z "$wg_out" ]; then
+  if [ -z "$tokenfile" ] || [ -z "$wg_out" ]; then
     usage && exit 0
   fi
 fi
@@ -196,8 +196,17 @@ servers_json=$(mktemp)
 addkey_response=$(mktemp)
 pia_cacert=$(mktemp)
 
+# Set env vars PIA_CN, PIA_IP and PIA_PORT to connect to a specific server
+if [ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ]; then
+  wg_cn="$PIA_CN"
+  wg_ip="$PIA_IP"
+  wg_port="$PIA_PORT"
+  location="manual"
+else
+  # Otherwise get what we need from the server list
+  get_servers
+fi
 
-get_servers
 get_wgconf
 
 [ "$port_forward_avail" -eq 1 ] && echo "Port forwarding is available at this location"

@@ -74,8 +74,10 @@ get_auth_token () {
 
 [ -w "$portfile" ] && rm "$portfile"
 
-# No LOC supplied
-[ -z "$LOC" ] && /scripts/wg-gen.sh -a && fatal_error
+# No LOC or specific ip/port/cn supplied
+if [ -z "$PIA_CN" ] || [ -z "$PIA_IP" ] || [ -z "$PIA_PORT" ]; then
+  [ -z "$LOC" ] && /scripts/wg-gen.sh -a && fatal_error
+fi
 
 [ ! -r "$tokenfile" ] && get_auth_token
 

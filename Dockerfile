@@ -18,7 +18,10 @@ ENV LOCAL_NETWORK= \
     PORT_PERSIST=0 \
     EXIT_ON_FATAL=0 \
     FIREWALL=1 \
-    WG_USERSPACE=0
+    WG_USERSPACE=0 \
+    PIA_IP= \
+    PIA_CN= \
+    PIA_PORT=
 
 # Modify wg-quick so it doesn't die without --privileged
 # Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
