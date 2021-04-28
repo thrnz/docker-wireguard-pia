@@ -158,6 +158,15 @@ if [ -n "$LOCAL_NETWORK" ]; then
   done
 fi
 
+# Nat+forward traffic from a specific interface if requested
+# eg. FWD_IFACE=eth1
+if [ -n "$FWD_IFACE" ]; then
+  iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
+  iptables -A FORWARD -i wg0 -o "$FWD_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -A FORWARD -i "$FWD_IFACE" -o wg0 -j ACCEPT
+  echo "$(date): Forwarding traffic from $FWD_IFACE to VPN"
+fi
+
 # Setup port forwarding if requested and available
 pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
 pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
