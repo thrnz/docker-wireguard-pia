@@ -21,7 +21,8 @@ ENV LOCAL_NETWORK= \
     WG_USERSPACE=0 \
     PIA_IP= \
     PIA_CN= \
-    PIA_PORT=
+    PIA_PORT= \
+    PORT_FILE_CLEANUP=0
 
 # Modify wg-quick so it doesn't die without --privileged
 # Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
