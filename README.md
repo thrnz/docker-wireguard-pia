@@ -23,7 +23,7 @@ The rest are optional:
 |```KEEPALIVE=25```|If defined, PersistentKeepalive will be set to this in the WireGuard config.
 |```VPNDNS=8.8.8.8, 8.8.4.4```|Use these DNS servers in the WireGuard config. Defaults to PIA's DNS servers if not specified.
 |```PORT_FORWARDING=0/1```|Whether to enable port forwarding. Requires a supported server. Defaults to 0 if not specified.
-|```PORT_FILE/pia-shared/port.dat```|The forwarded port number is dumped here for possible access by scripts in other containers. By default this is ```/pia-shared/port.dat```.
+|```PORT_FILE=/pia-shared/port.dat```|The forwarded port number is dumped here for possible access by scripts in other containers. By default this is ```/pia-shared/port.dat```.
 |```PORT_FILE_CLEANUP=0/1```|Remove the file containing the forwarded port number on exit. Defaults to 0 if not specified.
 |```PORT_PERSIST=0/1```|Set to 1 to attempt to keep the same port forwarded when the container is restarted. The port number may persist for up to two months. Defaults to 0 (always acquire a new port number) if not specified.
 |```FIREWALL=0/1```|Whether to block non-WireGuard traffic. Defaults to 1 if not specified.
