@@ -1,5 +1,24 @@
 #!/bin/bash
 
+# Check and/or set default options
+# Should be 0/1
+[[ "$EXIT_ON_FATAL" =~ ^[0-1]$ ]] || EXIT_ON_FATAL=0
+[[ "$FIREWALL" =~ ^[0-1]$ ]] || FIREWALL=1
+[[ "$PORT_FILE_CLEANUP" =~ ^[0-1]$ ]] || PORT_FILE_CLEANUP=0
+[[ "$PORT_FORWARDING" =~ ^[0-1]$ ]] || PORT_FORWARDING=0
+[[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
+[[ "$WG_USERSPACE" =~ ^[0-1]$ ]] || WG_USERSPACE=0
+# Should be a positive integer
+[[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
+# Maybe also check the following. They are all blank by default.
+# LOCAL_NETWORK=
+# PIA_CN=
+# PIA_IP=
+# PIA_PORT=
+# PORT_FILE=
+# QDISC=
+# VPNDNS=
+
 if [ $FIREWALL -eq 1 ]; then
   # Block everything by default
   ip6tables -P OUTPUT DROP &> /dev/null
