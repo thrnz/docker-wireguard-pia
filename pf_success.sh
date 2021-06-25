@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# This script is run once a port has been successfully forwarded
+# The port number is passed as the first argument
+
 [[ "$FIREWALL" =~ ^[0-1]$ ]] || FIREWALL=1
 
 if [ $FIREWALL -eq 1 ]; then
@@ -17,3 +20,6 @@ if [ -n "$PF_DEST_IP" ] && [ -n "$FWD_IFACE" ]; then
   iptables -A FORWARD -i wg0 -o "$FWD_IFACE" -p udp -d "$PF_DEST_IP" --dport "$1" -j ACCEPT
   echo "$(date): Forwarding incoming VPN traffic on port $1 to $PF_DEST_IP:$1"
 fi
+
+# Run another user-defined script if defined and present
+[ -n "$PORT_SCRIPT" ] && [ -x "$PORT_SCRIPT" ] && echo "$(date): Running user-defined script: $PORT_SCRIPT" && eval "$PORT_SCRIPT $1" &
