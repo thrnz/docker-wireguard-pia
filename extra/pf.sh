@@ -268,8 +268,13 @@ while true; do
     # Run another script if requested
     [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port" &
   fi
-  sleep $pf_bindinterval &
-  wait $!
+  # Rebind at a specific time instead of simply sleeping in case the system itself goes to sleep
+  # This prevents a delayed rebind after waking up
+  nextbind=$(( $(date +%s) + $pf_bindinterval ))
+  while [[ $(date +%s) < $nextbind ]]; do
+    sleep 5 &
+    wait $!
+  done
   bind_port || fatal_error
 done
 
