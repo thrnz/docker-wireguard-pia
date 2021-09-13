@@ -106,12 +106,12 @@ done
 
 bind_port () {
   pf_bind=$(curl --get --silent --show-error $iface_curl \
-      --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
+      --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       --data-urlencode "payload=$pf_payload" \
       --data-urlencode "signature=$pf_getsignature" \
       $verify \
       "https://$pf_host:19999/bindPort")
-  if [ "$(echo $pf_bind | jq -r .status)" != "OK" ]; then
+  if [ "$(jq -r .status <<< "$pf_bind ")" != "OK" ]; then
     echo "$(date): bindPort error"
     echo "$pf_bind"
     return 1
@@ -126,22 +126,22 @@ get_sig () {
     pf_getsig=$(cat "$persist_file")
   else
     pf_getsig=$(curl --get --silent --show-error $iface_curl \
-      --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
-      --data-urlencode "token=$(cat $tokenfile)" \
+      --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
+      --data-urlencode "token=$(cat "$tokenfile")" \
       $verify \
       "https://$pf_host:19999/getSignature")
   fi
-  if [ "$(echo $pf_getsig | jq -r .status)" != "OK" ]; then
+  if [ "$(jq -r .status <<< "$pf_getsig")" != "OK" ]; then
     echo "$(date): getSignature error"
     echo "$pf_getsig"
     fatal_error
   fi
   # Save response for re-use if requested
   [ -n "$persist_file" ] && echo "$pf_getsig" > "$persist_file"
-  pf_payload=$(echo $pf_getsig | jq -r .payload)
-  pf_getsignature=$(echo $pf_getsig | jq -r .signature)
-  pf_port=$(echo $pf_payload | base64 -d | jq -r .port)
-  pf_token_expiry_raw=$(echo $pf_payload | base64 -d | jq -r .expires_at)
+  pf_payload=$(jq -r .payload <<< "$pf_getsig")
+  pf_getsignature=$(jq -r .signature <<< "$pf_getsig")
+  pf_port=$(base64 -d <<< "$pf_payload" | jq -r .port)
+  pf_token_expiry_raw=$(base64 -d <<< "$pf_payload " | jq -r .expires_at)
   # Coreutils date doesn't need format specified (-D), whereas BusyBox does
   if date --help 2>&1 /dev/null | grep -iq 'busybox'; then
     pf_token_expiry=$(date -D %Y-%m-%dT%H:%M:%S --date="$pf_token_expiry_raw" +%s)
@@ -176,7 +176,7 @@ fi
 if [ -z "$api_ip" ]; then
   api_ip=$(traceroute -4 -m 1 $iface_tr privateinternetaccess.com | tail -n 1 | awk '{print $2}')
   # Very basic sanity check - make sure it matches 10.x.x.1
-  if ! echo "$api_ip" | grep -q '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1'; then
+  if ! grep -q '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' <<< "$api_ip"; then
     echo "$(date): Automatically getting API IP failed."
     fatal_error
   fi
@@ -187,7 +187,7 @@ fi
 if [ -z "$vpn_cn" ]; then
   possible_cn=$(curl $iface_curl --insecure --verbose --head https://$api_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
   # Sanity check - match 'lowercase123'
-  if echo "$possible_cn" | grep -q '[a-z]*[0-9]\{3\}'; then
+  if grep -q '[a-z]*[0-9]\{3\}' <<< "$possible_cn"; then
     echo "$(date): Using $possible_cn as cn"
     vpn_cn="$possible_cn"
   fi
@@ -201,7 +201,7 @@ if [ -n "$vpn_cn" ]; then
     cacert=$(mktemp)
     cacert_istemp=1
     if ! curl $iface_curl --get --silent --max-time "$curl_max_time" --output "$cacert" \
-      --retry $curl_retry --retry-delay $curl_retry_delay --max-time $curl_max_time \
+      --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
       echo "(date): Failed to download PIA ca cert"
       fatal_error
@@ -219,7 +219,7 @@ fi
 
 # Main loop
 while true; do
-  pf_remaining=$((  $pf_token_expiry - $(date +%s) ))
+  pf_remaining=$((  pf_token_expiry - $(date +%s) ))
   # Get a new pf token as the previous one will expire soon
   if [ $pf_remaining -lt $pf_minreuse ]; then
     if [ $pf_firstrun -ne 1 ]; then
@@ -247,7 +247,7 @@ while true; do
     [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port"
     echo "$(date): Rebind interval: $pf_bindinterval seconds"
     # Dump port here if requested
-    [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo $pf_port > "$portfile"
+    [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo "$pf_port" > "$portfile"
     echo "$(date): This script should remain running to keep the forwarded port alive"
     echo "$(date): Press Ctrl+C to exit"
   fi

@@ -34,7 +34,7 @@
 
 fatal_error () {
   cleanup
-  [ -n "$1" ] && exit $1
+  [ -n "$1" ] && exit "$1"
   exit 1
 }
 
@@ -67,9 +67,6 @@ parse_args() {
         ;;
       o)
         wg_out="$OPTARG"
-        ;;
-      c)
-        pia_cacert="$OPTARG"
         ;;
       k)
         pia_pubkey="$OPTARG"
@@ -112,7 +109,7 @@ get_servers() {
     echo "Location \"$location\" not found. Run with -a to list valid servers."
     fatal_error 3
   fi
-  serverindex=$(( $RANDOM % $totalservers))
+  serverindex=$(( RANDOM % totalservers))
   wg_cn=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].cn' "$servers_json")
   wg_ip=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].ip' "$servers_json")
   wg_port=$(jq -r '.groups.wg | .[0] | .ports | .[0]' "$servers_json")
@@ -122,8 +119,9 @@ get_servers() {
 
 get_wgconf () {
   client_private_key="$(wg genkey)"
-  client_public_key=$(wg pubkey <<< "$client_private_key")
-  [ $? -ne 0 ] && echo "$(date) Error generating Wireguard key pair" && fatal_error
+  if ! client_public_key=$(wg pubkey <<< "$client_private_key"); then
+    echo "$(date) Error generating Wireguard key pair" && fatal_error
+  fi
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
 

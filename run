@@ -19,7 +19,19 @@
 # QDISC=
 # VPNDNS=
 
-if [ $FIREWALL -eq 1 ]; then
+configdir="/pia"
+tokenfile="$configdir/.token"
+pf_persistfile="$configdir/portsig.json"
+
+sharedir="/pia-shared"
+# Set env var PORT_FILE to override where the forwarded port number is dumped
+# Might need to handle setting file ownership/permissions too
+portfile="${PORT_FILE:-$sharedir/port.dat}"
+
+pia_cacrt="/rsa_4096.crt"
+wg_conf="/etc/wireguard/wg0.conf"
+
+firewall_init () {
   # Block everything by default
   ip6tables -P OUTPUT DROP &> /dev/null
   ip6tables -P INPUT DROP &> /dev/null
@@ -37,19 +49,7 @@ if [ $FIREWALL -eq 1 ]; then
   # We also need to temporarily allow the following
   iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
   iptables -A OUTPUT -p tcp --dport 1337 -j ACCEPT
-fi
-
-configdir="/pia"
-tokenfile="$configdir/.token"
-pf_persistfile="$configdir/portsig.json"
-
-sharedir="/pia-shared"
-# Set env var PORT_FILE to override where the forwarded port number is dumped
-# Might need to handle setting file ownership/permissions too
-portfile="${PORT_FILE:-$sharedir/port.dat}"
-
-pia_cacrt="/rsa_4096.crt"
-wg_conf="/etc/wireguard/wg0.conf"
+}
 
 # Handle shutdown behavior
 finish () {
@@ -89,10 +89,13 @@ get_auth_token () {
   [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
   [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
   echo "$(date): Generating auth token"
-  /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"
-  [ $? -ne 0 ] && echo "$(date): Failed to acquire new auth token" && fatal_error
+  if ! /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"; then
+    echo "$(date): Failed to acquire new auth token" && fatal_error
+  fi
   chmod 600 "$tokenfile"
 }
+
+[ $FIREWALL -eq 1 ] && firewall_init
 
 # Remove previous forwarded port number dump file if requested and present
 [ $PORT_FILE_CLEANUP -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
@@ -152,17 +155,18 @@ if [ $FIREWALL -eq 1 ]; then
   iptables -A INPUT -i lo -j ACCEPT
 
   # Allow docker network input/output
-  for eth in `ls /sys/class/net | grep eth`; do
-    docker_network="$(ip -o addr show dev $eth|
+  for eth in /sys/class/net/eth*; do
+    eth="${eth##*/}"
+    docker_network="$(ip -o addr show dev "$eth"|
             awk '$3 == "inet" {print $4}')"
     echo "$(date): Allowing network access to $docker_network on $eth"
-    iptables -A OUTPUT -o $eth --destination $docker_network -j ACCEPT
-    iptables -A INPUT -i $eth --source $docker_network -j ACCEPT
+    iptables -A OUTPUT -o "$eth" --destination "$docker_network" -j ACCEPT
+    iptables -A INPUT -i "$eth" --source "$docker_network" -j ACCEPT
   done
 
   # Allow WG stuff
   iptables -A OUTPUT -o wg0 -j ACCEPT
-  iptables -I OUTPUT -m mark --mark $(wg show wg0 fwmark) -j ACCEPT
+  iptables -I OUTPUT -m mark --mark "$(wg show wg0 fwmark)" -j ACCEPT
 
   echo "$(date): Firewall enabled: Blocking non-WireGuard traffic"
 fi
@@ -173,11 +177,11 @@ if [ -n "$LOCAL_NETWORK" ]; then
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ $FIREWALL -eq 1 ]; then
       echo "$(date): Allowing network access to $range"
-      iptables -A OUTPUT -o eth0 --destination $range -j ACCEPT
-      iptables -A INPUT -i eth0 --source $range -j ACCEPT
+      iptables -A OUTPUT -o eth0 --destination "$range" -j ACCEPT
+      iptables -A INPUT -i eth0 --source "$range" -j ACCEPT
     fi
     echo "$(date): Adding route to $range"
-    ip route add $range via $(ip route show 0.0.0.0/0 dev eth0 | cut -d\  -f3)
+    ip route add "$range" via "$(ip route show 0.0.0.0/0 dev eth0 | cut -d\  -f3)"
   done
 fi
 
@@ -211,7 +215,7 @@ if [ -n "$CYCLE_PORTS" ]; then
   echo "$(date): Changing Wireguard's local port every ${CYCLE_INTERVAL:-180}s"
   while true; do
     for port in $CYCLE_PORTS; do
-      wg set wg0 listen-port $port
+      wg set wg0 listen-port "$port"
       sleep "${CYCLE_INTERVAL:-180}" & wait $!
     done
   done
