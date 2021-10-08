@@ -23,6 +23,13 @@ configdir="/pia"
 tokenfile="$configdir/.token"
 pf_persistfile="$configdir/portsig.json"
 
+# Run custom scripts at the appropriate time if present
+custom_scriptdir="/pia/scripts"
+pre_up="$custom_scriptdir/pre-up.sh"
+post_up="$custom_scriptdir/post-up.sh"
+pre_down="$custom_scriptdir/pre-down.sh"
+post_down="$custom_scriptdir/post-down.sh"
+
 sharedir="/pia-shared"
 # Set env var PORT_FILE to override where the forwarded port number is dumped
 # Might need to handle setting file ownership/permissions too
@@ -53,6 +60,7 @@ firewall_init () {
 
 # Handle shutdown behavior
 finish () {
+  [ -x "$pre_down" ] && run_script "$pre_down"
   [ $PORT_FORWARDING -eq 1 ] && pkill -f 'pf.sh'
   echo "$(date): Shutting down WireGuard"
   # Remove forwarded port number dump file if requested
@@ -62,6 +70,7 @@ finish () {
   else
     wg-quick down wg0
   fi
+  [ -x "$post_down" ] && run_script "$post_down"
   exit 0
 }
 
@@ -81,6 +90,11 @@ fatal_error () {
   wait $!
 }
 
+run_script () {
+  echo "$(date): Running $1"
+  eval "$1" || fatal_error
+}
+
 # Get a new auth token
 # Unsure how long an auth token will remain valid
 get_auth_token () {
@@ -94,6 +108,8 @@ get_auth_token () {
   fi
   chmod 600 "$tokenfile"
 }
+
+[ -x "$pre_up" ] && run_script "$pre_up"
 
 [ $FIREWALL -eq 1 ] && firewall_init
 
@@ -206,6 +222,8 @@ if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
     /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" &
   fi
 fi
+
+[ -x "$post_up" ] && run_script "$post_up"
 
 # Workaround a NAT bug when using Wireguard behind a particular Asus router by regularly changing the local port
 # Set env var CYCLE_PORTS to a space-separated list of ports to cycle through

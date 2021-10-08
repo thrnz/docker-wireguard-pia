@@ -45,6 +45,7 @@ The rest are optional:
 * Other containers can share the VPN connection using Docker's [```--net=container:xyz```](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [```network_mode: service:xyz```](https://github.com/compose-spec/compose-spec/blob/master/spec.md#network_mode).
 * Standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) are available for use outside of Docker.
 * The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun)) might be beneficial.
+* Custom scripts can be run at various stages of the container's lifecycle if needed. See [issue #33](https://github.com/thrnz/docker-wireguard-pia/issues/33) for more info.
 
 ## Credits
 Some bits and pieces and ideas have been borrowed from the following:
