@@ -8,6 +8,7 @@
 [[ "$PORT_FORWARDING" =~ ^[0-1]$ ]] || PORT_FORWARDING=0
 [[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
 [[ "$WG_USERSPACE" =~ ^[0-1]$ ]] || WG_USERSPACE=0
+[[ "$NFTABLES" =~ ^[0-1]$ ]] || NFTABLES=0
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
 # Maybe also check the following. They are all blank by default.
@@ -56,6 +57,23 @@ firewall_init () {
   # We also need to temporarily allow the following
   iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
   iptables -A OUTPUT -p tcp --dport 1337 -j ACCEPT
+}
+
+# Repalce iptables symlinks if needed
+# This seems a bit blunt, does Alpine have a 'correct' way of doing this?
+nftables_setup () {
+  rm /sbin/iptables
+  rm /sbin/iptables-save
+  rm /sbin/iptables-restore
+  rm /sbin/ip6tables
+  rm /sbin/ip6tables-save
+  rm /sbin/ip6tables-restore
+  ln -s /sbin/xtables-nft-multi /sbin/iptables
+  ln -s /sbin/xtables-nft-multi /sbin/iptables-save
+  ln -s /sbin/xtables-nft-multi /sbin/iptables-restore
+  ln -s /sbin/xtables-nft-multi /sbin/ip6tables
+  ln -s /sbin/xtables-nft-multi /sbin/ip6tables-save
+  ln -s /sbin/xtables-nft-multi /sbin/ip6tables-restore
 }
 
 # Handle shutdown behavior
@@ -108,6 +126,8 @@ get_auth_token () {
   fi
   chmod 600 "$tokenfile"
 }
+
+[ $NFTABLES -eq 1 ] && nftables_setup
 
 [ -x "$pre_up" ] && run_script "$pre_up"
 
