@@ -122,7 +122,7 @@ bind_port () {
 get_sig () {
   # Attempt to reuse our previous port if requested
   if [ -n "$persist_file" ] && [ -r "$persist_file" ]; then
-    echo "$(date) Reusing previous PF token"
+    echo "$(date): Reusing previous PF token"
     pf_getsig=$(cat "$persist_file")
   else
     pf_getsig=$(curl --get --silent --show-error $iface_curl \
@@ -224,6 +224,7 @@ while true; do
   if [ $pf_remaining -lt $pf_minreuse ]; then
     if [ $pf_firstrun -ne 1 ]; then
       echo "$(date): PF token will expire soon. Getting new one."
+      [ -n "$persist_file" ] && [ -w "$persist_file" ] && rm "$persist_file"
     else
       echo "$(date): Getting PF token"
       pf_firstrun=0
