@@ -1,6 +1,3 @@
-# This example is written for implementations that allow local access to tunneled containers. For example, if you have a web server or a
-# container that uses a web interface to manage it you'll need to use the configuration below. If you DON'T need this and your containers
-# are only managed through the VPN tunnel you can comment out or omit the LOCAL_NETWORK line.
 version: '3.8'
 services:
     vpn:
@@ -22,9 +19,12 @@ services:
             - LOC=swiss
             - USER=p0000000
             - PASS=xxxxxxxxxxxxxxxx
+            
+            # If you have tunneled containers you need to connect to, you must define LOCAL_NETWORK. See
+            # details below at the [helloworld] definition.
             - LOCAL_NETWORK=192.168.1.0/24 # Substitute your local network subnet.
-            # Example of LOCAL_NETWORK allowing two subnets
-            # - LOCAL_NETWORK=192.168.1.0/24,192.168.42.0/24
+            #- LOCAL_NETWORK=192.168.1.0/24,192.168.42.0/24 Example allowing two local subnets
+            
             # The rest are optional:
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
@@ -49,10 +49,10 @@ services:
     # Example of another service sharing the VPN using network_mode: service.  With this mode both containers
     # share the same network stack, so all network definitions are under the parent container.
     # See https://docs.docker.com/engine/reference/run/#network-container and
-    # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode for technical information
+    # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode
     helloworld:
         image: nginxdemos/hello
-        network_mode: "service:vpn" # This is the name of the service
+        network_mode: "service:vpn"
         # Port definitions for this container go under the connected container instead.
         #ports:
         #    - 4980:80
