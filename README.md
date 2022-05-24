@@ -19,7 +19,7 @@ The rest are optional:
 
 | ENV Var | Function |
 |-------|------|
-|```LOCAL_NETWORK=192.168.1.0/24```|Whether to route and allow input/output traffic to the LAN. LAN access is blocked by default if not specified. Multiple ranges can be specified, separated by a comma or space.
+|```LOCAL_NETWORK=192.168.1.0/24```|Whether to route and allow input/output traffic to the LAN. LAN access is blocked by default if not specified. Multiple ranges can be specified, separated by a comma or space.<br />⚠This variable is **required** if you intend to connect to a tunneled container via SSH, HTTP, etc. See [docker-compose.yml](docker-compose.yml) for an example.
 |```KEEPALIVE=25```|If defined, PersistentKeepalive will be set to this in the WireGuard config.
 |```VPNDNS=8.8.8.8, 8.8.4.4```|Use these DNS servers in the WireGuard config. Defaults to PIA's DNS servers if not specified.
 |```PORT_FORWARDING=0/1```|Whether to enable port forwarding. Requires a supported server. Defaults to 0 if not specified.
