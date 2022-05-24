@@ -1,4 +1,7 @@
-version: '3'
+# This example is written for implementations that allow local access to tunneled containers. For example, if you have a web server or a
+# container that uses a web interface to manage it you'll need to use the configuration below. If you DON'T need this and your containers
+# are only managed through the VPN tunnel you can comment out or omit the LOCAL_NETWORK line.
+version: '3.8'
 services:
     vpn:
         image: thrnz/docker-wireguard-pia
@@ -19,12 +22,16 @@ services:
             - LOC=swiss
             - USER=p0000000
             - PASS=xxxxxxxxxxxxxxxx
+            - LOCAL_NETWORK=192.168.1.0/24 # Substitute your local network subnet.
+            # Example of LOCAL_NETWORK allowing two subnets
+            # - LOCAL_NETWORK=192.168.1.0/24,192.168.42.0/24
             # The rest are optional:
-            #- LOCAL_NETWORK=192.168.1.0/24
             #- KEEPALIVE=25
             #- VPNDNS=8.8.8.8,8.8.4.4
             #- PORT_FORWARDING=1
             #- WG_USERSPACE=1
+        ports:
+            - 4980:80 # This is the port for the helloworld container below.
         sysctls:
             # wg-quick fails to set this without --privileged, so set it here instead if needed
             - net.ipv4.conf.all.src_valid_mark=1
@@ -39,11 +46,16 @@ services:
             timeout: 10s
             retries: 3
 
-    # Example of another service sharing the VPN
-    other-service:
-        image: some-other-image
-        # Other services can share the VPN using 'network_mode'
-        network_mode: "service:vpn"
+    # Example of another service sharing the VPN using network_mode: service.  With this mode both containers
+    # share the same network stack, so all network definitions are under the parent container.
+    # See https://docs.docker.com/engine/reference/run/#network-container and
+    # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode for technical information
+    helloworld:
+        image: nginxdemos/hello
+        network_mode: "service:vpn" # This is the name of the service
+        # Port definitions for this container go under the connected container instead.
+        #ports:
+        #    - 4980:80
 
     # Other containers can access the forwarded port number via /pia-shared/port.dat
     # Here's an example of a bare-bones 'helper' container that passes the forwarded port to Deluge
