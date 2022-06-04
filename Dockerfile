@@ -8,6 +8,7 @@ RUN apk add --no-cache \
     iptables \
     jq \
     openssl \
+    sudo \
     wireguard-tools
 
 # Modify wg-quick so it doesn't die without --privileged
