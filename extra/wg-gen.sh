@@ -14,6 +14,7 @@
 #  -m <mtu>                     (Optional) Use this as the interface's mtu value in the generated config
 #  -c </path/to/ca.crt>         (Optional) Path to PIA ca cert. Fetched from the PIA Github repository if not provided.
 #  -a                           List available locations and whether they support port forwarding
+# -i <netmask,netmask>          (Optional) Comma separate list of netmasks to use as AllowedIPs entry in the generated WG config
 #
 # Examples:
 #   wg-gen.sh -a
@@ -73,10 +74,11 @@ usage() {
   echo " -m <mtu>                     (Optional) Use this as the interface's mtu value in the generated config"
   echo " -c </path/to/ca.crt>         (Optional) Path to PIA ca cert. Fetched from the PIA Github repository if not provided."
   echo " -a                           List available locations and whether they support port forwarding"
+  echo " -i <netmask,netmask>         (Optional) Comma separate list of netmasks to use as AllowedIPs entry in the generated WG config"
 }
 
 parse_args() {
-  while getopts ":t:l:o:k:c:d:m:a" args; do
+  while getopts ":t:l:o:k:c:d:m:a:i" args; do
     case ${args} in
       t)
         tokenfile="$OPTARG"
@@ -98,6 +100,8 @@ parse_args() {
         ;;
       m)
         mtu="$OPTARG"
+      i)
+        allowed_ips="$OPTARG"
         ;;
       a)
         list_and_exit=1
@@ -245,6 +249,12 @@ get_wgconf () {
       echo "Using custom DNS servers: $dns"
   fi
 
+  if [ -z "$allowed_ips" ]; then
+    allowed_ips="0.0.0.0/0"
+  else
+    echo "Using custom AllowedIPs: $allowed_ips"
+  fi
+
   cat <<CONFF > "$wg_out"
 #cn: $wg_cn
 #pf api ip: $pfapi_ip
@@ -263,7 +273,7 @@ CONFF
 
 [Peer]
 PublicKey = $server_public_key
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = $allowed_ips
 Endpoint = $wg_ip:$server_port
 CONFF
 

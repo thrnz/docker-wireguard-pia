@@ -22,6 +22,7 @@
 # QDISC=
 # VPNDNS=
 # MTU=
+# ALLOWEDIPS=
 
 configdir="/pia"
 tokenfile="$configdir/.token"
@@ -128,7 +129,7 @@ run_command () {
 }
 
 gen_wgconf () {
-  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
+  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt" -i "$ALLOWEDIPS"
   return $?
 }
 
