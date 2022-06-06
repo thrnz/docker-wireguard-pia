@@ -1,5 +1,7 @@
 #!/bin/bash
 
+[ -n "$DEBUG" ] && set -o xtrace
+
 # Check and/or set default options
 # Should be 0/1
 [[ "$EXIT_ON_FATAL" =~ ^[0-1]$ ]] || EXIT_ON_FATAL=0
