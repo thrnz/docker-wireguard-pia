@@ -40,9 +40,16 @@ services:
             retries: 3
 
     # Example of another service sharing the VPN
+    # If this service needs LAN access then LOCAL_NETWORK must be set appropriatley on the vpn container
+    # Forwared ports should also be set on the vpn container if needed rather than this one in
+    # order to access from the LAN
+    # It may be preferable to use a reverse proxy connected via the docker bridge network instead
+    # to keep the vpn isolated from the LAN
     other-service:
         image: some-other-image
         # Other services can share the VPN using 'network_mode'
+        # See https://docs.docker.com/engine/reference/run/#network-container and
+        # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode
         network_mode: "service:vpn"
 
     # Other containers can access the forwarded port number via /pia-shared/port.dat
