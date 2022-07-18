@@ -186,7 +186,6 @@ echo "$(date): WireGuard successfully started"
 
 if [ $FIREWALL -eq 1 ]; then
   iptables -F OUTPUT
-  iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   iptables -A OUTPUT -o lo -j ACCEPT
   iptables -F INPUT
   iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
