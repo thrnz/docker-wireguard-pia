@@ -14,6 +14,10 @@
 #  -f <interface name>          (Optional) Network interface to use for requests
 #  -s </path/to/script.sh>      (Optional) Run a script on success.
 #                               The forwarded port is passed as an argument.
+#  -r </path/to/persistfile>    (Optional) In order to re-use the same forwarded port number between
+#                               sessions, the port forwarding token can be stored here. Tokens can last
+#                               up to 2 months after which a new token will be retrieved and the forwarded
+#                               port will change
 #
 # Examples:
 #   pf.sh -t ~/.pia-token
@@ -71,7 +75,11 @@ usage() {
  -p </path/to/port.dat>       (Optional) Dump forwarded port here for access by other scripts
  -f <interface name>          (Optional) Network interface to use for requests
  -s </path/to/script.sh>      (Optional) Run a script on success.
-                              The forwarded port is passed as an argument."
+                              The forwarded port is passed as an argument.
+ -r </path/to/persistfile>    (Optional) In order to re-use the same forwarded port number between
+                              sessions, the port forwarding token can be stored here. Tokens can last
+                              up to 2 months after which a new token will be retrieved and the forwarded
+                              port will change"
 }
 
 while getopts ":t:i:n:c:p:f:s:r:" args; do
