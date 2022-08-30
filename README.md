@@ -42,7 +42,7 @@ The rest are optional:
 * PIA username/password is only used on the first run. A persistent auth token is generated and will be re-used for future runs.
 * Persistent data is stored in ```/pia```.
 * IPv4 only. IPv6 traffic is blocked unless using ```FIREWALL=0``` but you may want to disable IPv6 on the container anyway.
-* An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is included.
+* An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is included. Some more working examples can be found [here](https://github.com/thrnz/docker-wireguard-pia/wiki/Examples).
 * Other containers can share the VPN connection using Docker's [```--net=container:xyz```](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [```network_mode: service:xyz```](https://github.com/compose-spec/compose-spec/blob/master/spec.md#network_mode).
 * Standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) are available for use outside of Docker.
 * The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun)) might be beneficial.
