@@ -17,7 +17,7 @@ services:
         environment:
             # The following env vars are required:
             - LOC=swiss
-            - USER=p0000000
+            - USER=xxxxxxxxxxxxxxxx
             - PASS=xxxxxxxxxxxxxxxx
             # The rest are optional:
             #- LOCAL_NETWORK=192.168.1.0/24

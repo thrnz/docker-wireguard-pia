@@ -9,7 +9,7 @@
 #  -p <password>
 #
 # Example:
-#  pia-auth.sh -u p0000000 -p mypassword > ~/.pia-token
+#  pia-auth.sh -u myusername -p mypassword > ~/.pia-token
 #
 # deauth using:
 # curl --silent --show-error --request POST \
