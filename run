@@ -13,6 +13,7 @@
 [[ "$NFTABLES" =~ ^[0-1]$ ]] || NFTABLES=0
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
+[[ "$MTU" =~ ^[0-9]+$ ]] || MTU=1420
 # Maybe also check the following. They are all blank by default.
 # LOCAL_NETWORK=
 # PIA_CN=
@@ -146,12 +147,12 @@ fi
 [ ! -r "$tokenfile" ] && get_auth_token
 
 # Generate wg0.conf
-/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS"
+/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU"
 result=$?
 if [ "$result" -eq 2 ]; then
   # Reauth and retry if auth failed
   get_auth_token
-  /scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" || fatal_error
+  /scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" || fatal_error
 elif [ "$result" -eq 3 ]; then
   # Location not found
   echo "$(date): Location $LOC not found"

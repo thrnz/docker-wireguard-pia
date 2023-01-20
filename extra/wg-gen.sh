@@ -11,6 +11,7 @@
 #  -o </path/to/wg0.conf        The generated .conf will be saved here
 #  -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL.
 #  -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS.
+#  -m <MTU>                     (Optional) Specify MTU for the wireguard connection. Defaults to 1420
 #  -a                           List available locations and whether they support port forwarding
 #
 # Examples:
@@ -53,11 +54,12 @@ usage() {
   echo " -o </path/to/wg0.conf        The generated conf will be saved here"
   echo " -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL."
   echo " -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS."
+  echo " -m <MTU>                     (Optional) Specify MTU for the wireguard connection. Defaults to 1420"
   echo " -a                           List available locations and whether they support port forwarding"
 }
 
 parse_args() {
-  while getopts ":t:l:o:k:d:a" args; do
+  while getopts ":t:l:o:k:d:m:a" args; do
     case ${args} in
       t)
         tokenfile="$OPTARG"
@@ -71,6 +73,9 @@ parse_args() {
       k)
         pia_pubkey="$OPTARG"
         ;;
+      m)
+        mtu="$OPTARG"
+        ;;        
       d)
         dns="$OPTARG"
         ;;
@@ -155,6 +160,11 @@ get_wgconf () {
   else
       echo "Using custom DNS servers: $dns"
   fi
+  if (($mtu >= 1280 && $mtu < 1420)); then
+      echo "Using custom MTU: $mtu"
+  else
+      echo "Using default MTU: 1420"
+  fi
 
   cat <<CONFF > "$wg_out"
 #cn: $wg_cn
@@ -163,6 +173,7 @@ get_wgconf () {
 PrivateKey = $client_private_key
 Address = $peer_ip
 DNS = $dns
+MTU = $mtu
 
 [Peer]
 PublicKey = $server_public_key
