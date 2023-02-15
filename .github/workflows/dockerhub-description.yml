@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - README.md
+      - .github/workflows/dockerhub-description.yml
+
+jobs:
+  dockerHubDescription:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Docker Hub Description
+      uses: peter-evans/dockerhub-description@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: thrnz/docker-wireguard-pia
