@@ -157,6 +157,9 @@ get_wgconf () {
   if [ -z "$dns" ]; then
       dns=$(jq -r '.dns_servers[0:2]' "$addkey_response" | grep ^\  | cut -d\" -f2 | xargs echo | sed -e 's/ /,/g')
       echo "Using PIA DNS servers: $dns"
+  elif [ "$dns" = "0" ]; then
+      echo "Using default container DNS servers"
+      dns=""
   else
       echo "Using custom DNS servers: $dns"
   fi
