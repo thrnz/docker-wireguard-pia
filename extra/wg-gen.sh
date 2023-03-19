@@ -13,6 +13,7 @@
 #  -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS.
 #  -m <mtu>                     (Optional) Use this as the interface's mtu value in the generated config
 #  -a                           List available locations and whether they support port forwarding
+#  -n <1 or 0>                  Do NAT in PostUp / PreDown rules in generated config
 #
 # Examples:
 #   wg-gen.sh -a
@@ -55,11 +56,12 @@ usage() {
   echo " -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL."
   echo " -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS."
   echo " -m <mtu>                     (Optional) Use this as the interface's mtu value in the generated config"
+  echo " -n <1 or 0>                  (Optional) Do NAT translation over the wg0 interface"
   echo " -a                           List available locations and whether they support port forwarding"
 }
 
 parse_args() {
-  while getopts ":t:l:o:k:d:m:a" args; do
+  while getopts ":t:l:o:k:d:m:n:a" args; do
     case ${args} in
       t)
         tokenfile="$OPTARG"
@@ -79,9 +81,13 @@ parse_args() {
       m)
         mtu="$OPTARG"
         ;;
+      n)
+	do_nat="$OPTARG"
+	;;
       a)
         list_and_exit=1
         ;;
+
     esac
   done
 }
@@ -178,6 +184,11 @@ CONFF
 	echo "MTU = $mtu" >> "$wg_out"
   fi
 
+  if [ "$do_nat" -eq 1 ]; then
+      echo "Configuring NAT"
+      echo "PostUp = iptables -t nat -A POSTROUTING -o wg+ -j MASQUERADE" >> "$wg_out"
+      echo "PreDown = iptables -t nat -D POSTROUTING -o wg+ -j MASQUERADE" >> "$wg_out"
+  fi
   cat <<CONFF >> "$wg_out"
 
 [Peer]

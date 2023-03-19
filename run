@@ -11,6 +11,7 @@
 [[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
 [[ "$WG_USERSPACE" =~ ^[0-1]$ ]] || WG_USERSPACE=0
 [[ "$NFTABLES" =~ ^[0-1]$ ]] || NFTABLES=0
+[[ "$DO_NAT" =~ ^[0-1]$ ]] || DO_NAT=0
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
 # Maybe also check the following. They are all blank by default.
@@ -147,7 +148,7 @@ fi
 [ ! -r "$tokenfile" ] && get_auth_token
 
 # Generate wg0.conf
-/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU"
+/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -n "$DO_NAT"
 result=$?
 if [ "$result" -eq 2 ]; then
   # Reauth and retry if auth failed
@@ -226,7 +227,9 @@ fi
 # Nat+forward traffic from a specific interface if requested
 # eg. FWD_IFACE=eth1
 if [ -n "$FWD_IFACE" ]; then
-  iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
+  if [ "$DO_NAT" -ne 1 ]; then # this rule is already added for us if we set DO_NAT
+    iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
+  fi
   iptables -A FORWARD -i wg0 -o "$FWD_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -A FORWARD -i "$FWD_IFACE" -o wg0 -j ACCEPT
   echo "$(date): Forwarding traffic from $FWD_IFACE to VPN"
