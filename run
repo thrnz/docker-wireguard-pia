@@ -51,10 +51,12 @@ firewall_init () {
   iptables -P INPUT DROP &> /dev/null
   iptables -P FORWARD DROP &> /dev/null
 
-  # Temporarily allow DNS queries
+  # Allow loopback traffic and input for established connections
   iptables -A OUTPUT -o lo -j ACCEPT
   iptables -A INPUT -i lo -j ACCEPT
   iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # Temporarily allow DNS queries
   iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 
   # We also need to temporarily allow the following
@@ -186,11 +188,10 @@ echo "$(date): WireGuard successfully started"
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
 if [ $FIREWALL -eq 1 ]; then
-  iptables -F OUTPUT
-  iptables -A OUTPUT -o lo -j ACCEPT
-  iptables -F INPUT
-  iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-  iptables -A INPUT -i lo -j ACCEPT
+  # Remove temporary rules
+  iptables -D OUTPUT -p udp --dport 53 -j ACCEPT
+  iptables -D OUTPUT -p tcp --dport 443 -j ACCEPT
+  iptables -D OUTPUT -p tcp --dport 1337 -j ACCEPT
 
   # Allow docker network input/output
   for eth in /sys/class/net/eth*; do
