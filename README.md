@@ -35,6 +35,12 @@ The rest are optional:
 |```PIA_IP=x.x.x.x``` ```PIA_CN=hostname401``` ```PIA_PORT=1337```|Connect to a specific server by manually setting all three of these. This will override whatever ```LOC``` is set to.
 |```FWD_IFACE``` ```PF_DEST_IP```|If needed, the container can be used as a gateway for other containers or devices by setting these. See [issue #20](https://github.com/thrnz/docker-wireguard-pia/issues/20) for more info. Note that these are for a specific use case, and in many cases using Docker's ```--net=container:xyz``` or docker-compose's ```network_mode: service:xyz``` instead, and leaving these vars unset, would be an easier way of accessing the VPN and forwarded port from other containers.
 |```NFTABLES=0/1```|Alpine uses `iptables-legacy` by defualt. If needed, `iptables-nft` can be used instead by setting this to 1. Defaults to 0 if not specified. See [issue #37](https://github.com/thrnz/docker-wireguard-pia/issues/37).
+|`PRE_UP` `POST_UP` `PRE_DOWN` `POST_DOWN`|Custom commands and/or scripts can be run at certain stages if needed. See [below](#scripting) for more info.
+
+## Scripting
+Custom commands and/or scripts can be run at certain stages of the container's life-cycle by setting the `PRE_UP`, `POST_UP`, `PRE_DOWN`, and `POST_DOWN` env vars. `PRE_UP` is run prior to generating the WireGuard config, `POST_UP` is run after the WireGuard interface is brought up, and `PRE_DOWN` and `POST_DOWN` are run before and after the interface is brought down again when the container exits.
+
+In addition, scripts mounted in `/pia/scripts` named `pre-up.sh`, `post-up.sh`, `pre-down.sh` and `post-down.sh` will be run at the appropriate stage if present. See [issue #33](https://github.com/thrnz/docker-wireguard-pia/issues/33) for more info.
 
 ## Notes
 * Based on what was found in the source code to the PIA desktop app.
@@ -47,7 +53,6 @@ The rest are optional:
 * Other containers can share the VPN connection using Docker's [```--net=container:xyz```](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [```network_mode: service:xyz```](https://github.com/compose-spec/compose-spec/blob/master/spec.md#network_mode).
 * Standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) are available for use outside of Docker.
 * The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun)) might be beneficial.
-* Custom scripts can be run at various stages of the container's lifecycle if needed. See [issue #33](https://github.com/thrnz/docker-wireguard-pia/issues/33) for more info.
 
 ## Credits
 Some bits and pieces and ideas have been borrowed from the following:
