@@ -113,17 +113,24 @@ while getopts ":t:i:n:c:p:f:s:r:" args; do
 done
 
 bind_port () {
+  # Store transient errors here. Only display on fail.
+  local stderr_tmp=$(mktemp)
   pf_bind=$(curl --get --silent --show-error $iface_curl \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       --data-urlencode "payload=$pf_payload" \
       --data-urlencode "signature=$pf_getsignature" \
       $verify \
-      "https://$pf_host:19999/bindPort")
+      "https://$pf_host:19999/bindPort" 2> "$stderr_tmp")
   if [ "$(jq -r .status <<< "$pf_bind ")" != "OK" ]; then
     echo "$(date): bindPort error"
+    echo "$(date): Curl error/s:"
+    cat "$stderr_tmp"
+    rm "$stderr_tmp"
+    echo "$(date): API response:"
     echo "$pf_bind"
     return 1
   fi
+  rm "$stderr_tmp"
   return 0
 }
 
