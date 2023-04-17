@@ -153,12 +153,12 @@ fi
 [ ! -r "$tokenfile" ] && get_auth_token
 
 # Generate wg0.conf
-/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU"
+/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
 result=$?
 if [ "$result" -eq 2 ]; then
   # Reauth and retry if auth failed
   get_auth_token
-  /scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" || fatal_error
+  /scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt" || fatal_error
 elif [ "$result" -eq 3 ]; then
   # Location not found
   echo "$(date): Location $LOC not found"

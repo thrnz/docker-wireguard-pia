@@ -12,6 +12,7 @@
 #  -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL.
 #  -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS.
 #  -m <mtu>                     (Optional) Use this as the interface's mtu value in the generated config
+#  -c </path/to/ca.crt>         (Optional) Path to PIA ca cert. Fetched from the PIA Github repository if not provided.
 #  -a                           List available locations and whether they support port forwarding
 #
 # Examples:
@@ -23,6 +24,8 @@
 #  https://serverlist.piaservers.net/vpninfo/servers/v4
 # The public key for verifying the server list can be found here:
 #  https://github.com/pia-foss/desktop/blob/122710c6ada5db83620c63faff2d805ea52d7f40/daemon/src/environment.cpp#L30
+# The PIA ca cert can be found here:
+#  https://github.com/pia-foss/desktop/blob/master/daemon/res/ca/rsa_4096.crt
 #
 # As of Sep 2020, PIA have released their own standalone scripts for use outside of their app:
 # https://github.com/pia-foss/manual-connections
@@ -44,7 +47,7 @@ cleanup(){
   [ -w "$servers_json" ] && rm "$servers_json"
   [ -w "$servers_sig" ] && rm "$servers_sig"
   [ -w "$addkey_response" ] && rm "$addkey_response"
-  [ -w "$pia_cacert" ] && rm "$pia_cacert"
+  [ -w "$pia_cacert_tmp" ] && rm "$pia_cacert_tmp"
 }
 
 usage() {
@@ -55,11 +58,12 @@ usage() {
   echo " -k </path/to/pubkey.pem>     (Optional) Verify the server list using this public key. Requires OpenSSL."
   echo " -d <dns server/s>            (Optional) Use these DNS servers in the generated WG config. Defaults to PIA's DNS."
   echo " -m <mtu>                     (Optional) Use this as the interface's mtu value in the generated config"
+  echo " -c </path/to/ca.crt>         (Optional) Path to PIA ca cert. Fetched from the PIA Github repository if not provided."
   echo " -a                           List available locations and whether they support port forwarding"
 }
 
 parse_args() {
-  while getopts ":t:l:o:k:d:m:a" args; do
+  while getopts ":t:l:o:k:c:d:m:a" args; do
     case ${args} in
       t)
         tokenfile="$OPTARG"
@@ -72,6 +76,9 @@ parse_args() {
         ;;
       k)
         pia_pubkey="$OPTARG"
+        ;;
+      c)
+        pia_cacert="$OPTARG"
         ;;
       d)
         dns="$OPTARG"
@@ -130,9 +137,14 @@ get_wgconf () {
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
 
-  if ! curl --get --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" --output "$pia_cacert" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
-    echo "Failed to download PIA ca cert"
-    fatal_error
+  if [ -z "$pia_cacert" ]; then
+    echo "$(date) Fetching PIA ca cert"
+    pia_cacert_tmp=$(mktemp)
+    if ! curl --get --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+      echo "Failed to download PIA ca cert"
+      fatal_error
+    fi
+    pia_cacert="$pia_cacert_tmp"
   fi
 
   echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
@@ -208,7 +220,6 @@ servers_raw=$(mktemp)
 servers_sig=$(mktemp)
 servers_json=$(mktemp)
 addkey_response=$(mktemp)
-pia_cacert=$(mktemp)
 
 # Set env vars PIA_CN, PIA_IP and PIA_PORT to connect to a specific server
 if [ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ]; then
