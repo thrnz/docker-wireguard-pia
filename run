@@ -198,13 +198,14 @@ if [ $FIREWALL -eq 1 ]; then
   iptables -D OUTPUT -p tcp --dport 1337 -j ACCEPT
 
   # Allow docker network input/output
-  for eth in /sys/class/net/eth*; do
-    eth="${eth##*/}"
-    docker_network="$(ip -o addr show dev "$eth"|
+  for iface in /sys/class/net/*; do
+    iface="${iface##*/}"
+    [[ "$iface" = @(lo|wg0) ]] && continue
+    docker_network="$(ip -o addr show dev "$iface"|
             awk '$3 == "inet" {print $4}')"
-    echo "$(date): Allowing network access to $docker_network on $eth"
-    iptables -A OUTPUT -o "$eth" --destination "$docker_network" -j ACCEPT
-    iptables -A INPUT -i "$eth" --source "$docker_network" -j ACCEPT
+    echo "$(date): Allowing network access to $docker_network on $iface"
+    iptables -A OUTPUT -o "$iface" --destination "$docker_network" -j ACCEPT
+    iptables -A INPUT -i "$iface" --source "$docker_network" -j ACCEPT
   done
 
   # Allow WG stuff
@@ -217,14 +218,16 @@ fi
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
 # Accept comma separated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
+  iface=$(ip route show default | awk '/default/ {print $5}')
+  gaddr=$(ip route show default | awk '/default/ {print $3}')
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ $FIREWALL -eq 1 ]; then
-      echo "$(date): Allowing network access to $range"
-      iptables -A OUTPUT -o eth0 --destination "$range" -j ACCEPT
-      iptables -A INPUT -i eth0 --source "$range" -j ACCEPT
+      echo "$(date): Allowing network access to $range on $iface"
+      iptables -A OUTPUT -o "$iface" --destination "$range" -j ACCEPT
+      iptables -A INPUT -i "$iface" --source "$range" -j ACCEPT
     fi
     echo "$(date): Adding route to $range"
-    ip route add "$range" via "$(ip route show 0.0.0.0/0 dev eth0 | cut -d\  -f3)"
+    ip route add "$range" via "$gaddr"
   done
 fi
 
