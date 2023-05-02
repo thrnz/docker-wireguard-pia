@@ -115,7 +115,7 @@ done
 bind_port () {
   # Store transient errors here. Only display on fail.
   local stderr_tmp=$(mktemp)
-  pf_bind=$(curl --get --silent --show-error $iface_curl \
+  pf_bind=$(curl --get --silent --show-error $iface_curl --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       --data-urlencode "payload=$pf_payload" \
       --data-urlencode "signature=$pf_getsignature" \
@@ -140,7 +140,7 @@ get_sig () {
     echo "$(date): Reusing previous PF token"
     pf_getsig=$(cat "$persist_file")
   else
-    pf_getsig=$(curl --get --silent --show-error $iface_curl \
+    pf_getsig=$(curl --get --silent --show-error $iface_curl --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       --data-urlencode "token=$(cat "$tokenfile")" \
       $verify \
@@ -166,9 +166,10 @@ get_sig () {
 }
 
 # We don't use any error handling or retry logic beyond what curl provides
-curl_max_time=15
-curl_retry=5
-curl_retry_delay=15
+curl_max_time=60
+curl_retry=10
+curl_retry_delay=30
+curl_connection_timeout=30
 
 # Rebind every 15 mins (same as desktop app)
 pf_bindinterval=$(( 15 * 60))
@@ -215,7 +216,7 @@ if [ -n "$vpn_cn" ]; then
     echo "$(date): Getting PIA ca cert"
     cacert=$(mktemp)
     cacert_istemp=1
-    if ! curl $iface_curl --get --silent --max-time "$curl_max_time" --output "$cacert" \
+    if ! curl $iface_curl --get --silent --max-time "$curl_max_time" --output "$cacert" --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
       echo "(date): Failed to download PIA ca cert"
