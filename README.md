@@ -27,6 +27,7 @@ The rest are optional:
 |```PORT_FILE=/pia-shared/port.dat```|The forwarded port number is dumped here for possible access by scripts in other containers. By default this is ```/pia-shared/port.dat```.
 |```PORT_FILE_CLEANUP=0/1```|Remove the file containing the forwarded port number on exit. Defaults to 0 if not specified.
 |```PORT_PERSIST=0/1```|Set to 1 to attempt to keep the same port forwarded when the container is restarted. The port number may persist for up to two months. Defaults to 0 (always acquire a new port number) if not specified.
+|`PORT_FATAL=0/1`|Whether to consider port forwarding errors as fatal or not. May be useful when combined with `EXIT_ON_FATAL` if needed. Defaults to 0 if not specified.
 |```PORT_SCRIPT=/path/to/script.sh```|A mounted custom script can be run inside the container once a port is successfully forwarded if needed. The forwarded port number is passed as the first command line argument. By default this remains unset. See [issue #26](https://github.com/thrnz/docker-wireguard-pia/issues/26) for more info.
 |```FIREWALL=0/1```|Whether to block non-WireGuard traffic. Defaults to 1 if not specified.
 |```EXIT_ON_FATAL=0/1```|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behaviour if other containers are sharing the connection.

@@ -9,6 +9,7 @@
 [[ "$PORT_FILE_CLEANUP" =~ ^[0-1]$ ]] || PORT_FILE_CLEANUP=0
 [[ "$PORT_FORWARDING" =~ ^[0-1]$ ]] || PORT_FORWARDING=0
 [[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
+[[ "$PORT_FATAL" =~ ^[0-1]$ ]] || PORT_FATAL=0
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
 # Maybe also check the following. They are all blank by default.
@@ -96,6 +97,14 @@ trap finish SIGTERM SIGINT SIGQUIT
 
 # All done. Sleep and wait for termination.
 now_sleep () {
+  if [ $PORT_FORWARDING -eq 1 ] && [ $PORT_FATAL -eq 1 ]; then
+    wait $pf_pid
+    if [ $? -ne 0 ];then
+      echo "$(date): Port forwarding script failed"
+      fatal_error
+    fi
+    echo "$(date): Port forwarding script closed"
+  fi
   sleep infinity &
   wait $!
 }
@@ -264,6 +273,7 @@ if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
   else
     /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
   fi
+  pf_pid=$!
 fi
 
 [ -x "$post_up_script" ] && run_command "$post_up_script"
