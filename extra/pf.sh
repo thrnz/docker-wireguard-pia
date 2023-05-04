@@ -260,13 +260,13 @@ while true; do
     echo "$(date): Obtained PF token. Expires at $pf_token_expiry_raw"
     echo "$(date): Server accepted PF bind"
     echo "$(date): Forwarding on port $pf_port"
-    # Run another script if requested
-    [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port"
     echo "$(date): Rebind interval: $pf_bindinterval seconds"
     # Dump port here if requested
     [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo "$pf_port" > "$portfile"
     echo "$(date): This script should remain running to keep the forwarded port alive"
     echo "$(date): Press Ctrl+C to exit"
+    # Run another script if requested
+    [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port" &
   fi
   sleep $pf_bindinterval &
   wait $!
