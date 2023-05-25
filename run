@@ -121,6 +121,11 @@ run_command () {
   eval "$1"
 }
 
+gen_wgconf () {
+  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
+  return $?
+}
+
 # Get a new auth token
 # Unsure how long an auth token will remain valid
 get_auth_token () {
@@ -153,19 +158,35 @@ fi
 [ ! -r "$tokenfile" ] && get_auth_token
 
 # Generate wg0.conf
-/scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
-result=$?
-if [ "$result" -eq 2 ]; then
-  # Reauth and retry if auth failed
-  get_auth_token
-  /scripts/wg-gen.sh -l "$LOC" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt" || fatal_error
-elif [ "$result" -eq 3 ]; then
-  # Location not found
-  echo "$(date): Location $LOC not found"
-  /scripts/wg-gen.sh -a
-  fatal_error
-elif [ "$result" -ne 0 ]; then
-  echo "$(date): Failed to generate WireGuard config"
+# LOC can be a single location id, or a space or comma separated list
+# Multiple location ids are used as fallback if the initial registration fails
+gen_success=0
+for location in ${LOC//,/ }; do
+  gen_wgconf "$location"
+  result=$?
+  if [ "$result" -eq 2 ]; then
+    # Reauth and retry if auth failed
+    # An auth error implies that the location id is valid and the endpoint responsive
+    get_auth_token
+    gen_wgconf "$LOC" || fatal_error
+  elif [ "$result" -eq 3 ]; then
+    # Location not found
+    echo "$(date): Location $location not found"
+    continue
+  elif [ "$result" -eq 4 ]; then
+    # Registration failed
+    echo "$(date): Registration failed"
+    continue
+  elif [ "$result" -ne 0 ]; then
+    echo "$(date): Failed to generate WireGuard config"
+    fatal_error
+  fi
+  gen_success=1
+  break
+done
+
+if [ "$gen_success" -eq 0 ]; then
+  echo "$(date): Failed to generate WireGuard config for the selected location/s: $LOC"
   fatal_error
 fi
 
