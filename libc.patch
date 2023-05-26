@@ -1,0 +1,35 @@
+@@ -227,14 +227,26 @@
+ 	fi
+ fi
+ 
+-# Protect against symlink attack, ensure new file does not exist
+-rm -f "$resolv_conf_tmp"
+-# Keep original file owner, group and mode
+-[ -r "$resolv_conf" ] && cp -p "$resolv_conf" "$resolv_conf_tmp"
+-# Create our resolv.conf now
+-if (umask 022; printf %s "$newconf" >"$resolv_conf_tmp"); then
+-	mv "$resolv_conf_tmp" "$resolv_conf"
+-fi
++# There are pros and cons for writing directly to resolv.conf
++# instead of a temporary file and then moving it over.
++# The default is to write to resolv.conf as it has the least
++# issues and has been the long standing default behaviour.
++case "${resolv_conf_mv:-NO}" in
++[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|1)
++	# Protect against symlink attack, ensure new file does not exist
++	rm -f "$resolv_conf_tmp"
++	# Keep original file owner, group and mode
++	[ -r "$resolv_conf" ] && cp -p "$resolv_conf" "$resolv_conf_tmp"
++	# Create our resolv.conf now
++	if (umask 022; printf %s "$newconf" >"$resolv_conf_tmp"); then
++		mv "$resolv_conf_tmp" "$resolv_conf"
++	fi
++	;;
++*)
++	(umask 022; printf %s "$newconf" >"$resolv_conf")
++	;;
++esac
++
+ if [ -n "$libc_restart" ]; then
+ 	eval $libc_restart
+ elif [ -n "$RESTARTCMD" ]; then
