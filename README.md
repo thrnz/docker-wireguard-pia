@@ -11,7 +11,7 @@ The following ENV vars are required:
 
 | ENV Var | Function |
 |-------|------|
-|```LOC=swiss```|Location id to connect to. Available 'next-gen' server location ids are listed [here](https://serverlist.piaservers.net/vpninfo/servers/v6). Example values include ```us_california```, ```ca_ontario```, and ```swiss```. If left empty, or an invalid id is specified, the container will print out all available location ids and exit.
+|```LOC=swiss```|Location id to connect to. Available server location ids are listed [here](https://serverlist.piaservers.net/vpninfo/servers/v6). Example values include ```us_california```, ```ca_ontario```, and ```swiss```. If left empty the container will print out all currently available location ids and exit. <br />Multiple ids can be listed, separated by either a space or a comma, and are used as fallback if the initial endpoint registration fails.
 |```USER=xxxxxxxx```|PIA username
 |```PASS=xxxxxxxx```|PIA password
 

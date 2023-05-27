@@ -35,6 +35,7 @@
 # 1: Anything else
 # 2: Auth error
 # 3: Invalid server location
+# 4: Registration failed
 
 fatal_error () {
   cleanup
@@ -48,6 +49,7 @@ cleanup(){
   [ -w "$servers_sig" ] && rm "$servers_sig"
   [ -w "$addkey_response" ] && rm "$addkey_response"
   [ -w "$pia_cacert_tmp" ] && rm "$pia_cacert_tmp"
+  return 0
 }
 
 usage() {
@@ -107,7 +109,7 @@ verify_serverlist ()
 
 get_servers() {
   echo "Fetching next-gen PIA server list"
-  curl --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
+  curl --silent --show-error $curl_params \
               "https://serverlist.piaservers.net/vpninfo/servers/v6" > "$servers_raw"
   head -n 1 "$servers_raw" | tr -d '\n' > "$servers_json"
   tail -n +3 "$servers_raw" | base64 -d > "$servers_sig"
@@ -140,7 +142,7 @@ get_wgconf () {
   if [ -z "$pia_cacert" ]; then
     echo "$(date) Fetching PIA ca cert"
     pia_cacert_tmp=$(mktemp)
-    if ! curl --get --silent --show-error --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+    if ! curl --get --silent --show-error $curl_params --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
       echo "Failed to download PIA ca cert"
       fatal_error
     fi
@@ -148,7 +150,7 @@ get_wgconf () {
   fi
 
   echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
-  curl --get --silent --show-error \
+  curl --get --silent --show-error $curl_params \
     --data-urlencode "pubkey=$client_public_key" \
     --data-urlencode "pt=$(cat $tokenfile)" \
     --cacert "$pia_cacert" \
@@ -156,7 +158,7 @@ get_wgconf () {
     "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
 
   [ "$(jq -r .status "$addkey_response")" == "ERROR" ] && [ "$(jq -r .message "$addkey_response")" == "Login failed!" ] && echo "Auth failed" && fatal_error 2
-  [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error
+  [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error 4
 
   peer_ip="$(jq -r .peer_ip "$addkey_response")"
   server_public_key="$(jq -r .server_key "$addkey_response")"
@@ -200,9 +202,7 @@ CONFF
 
 }
 
-curl_max_time=120
-curl_retry=5
-curl_retry_delay=15
+curl_params="--retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
 
 port_forward_avail=0
 list_and_exit=0
@@ -234,7 +234,11 @@ fi
 
 get_wgconf
 
-[ "$port_forward_avail" -eq 1 ] && echo "Port forwarding is available at this location"
+if [ "$port_forward_avail" -eq 1 ]; then
+  echo "Port forwarding is available at this location"
+else
+  echo "Port forwarding is not available at this location"
+fi
 
 echo "Successfully generated $wg_out"
 
