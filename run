@@ -129,12 +129,12 @@ gen_wgconf () {
 # Get a new auth token
 # Unsure how long an auth token will remain valid
 get_auth_token () {
-  [ -r "$USER_FILE" ] && echo "$(date): Reading username from $USER_FILE" && USER=$(<'${USER_FILE@Q}')
-  [ -r "$PASS_FILE" ] && echo "$(date): Reading password from $PASS_FILE" && PASS=$(<'${PASS_FILE@Q}')
+  [ -r "$USER_FILE" ] && echo "$(date): Reading username from $USER_FILE" && USER=$(<'$USER_FILE')
+  [ -r "$PASS_FILE" ] && echo "$(date): Reading password from $PASS_FILE" && PASS=$(<'$PASS_FILE')
   [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
   [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
   echo "$(date): Generating auth token"
-  if ! /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"; then
+  if ! /scripts/pia-auth.sh -u '$USER' -p '$PASS' > "$tokenfile"; then
     echo "$(date): Failed to acquire new auth token" && fatal_error
   fi
   chmod 600 "$tokenfile"
