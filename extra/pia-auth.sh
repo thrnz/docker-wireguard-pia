@@ -49,7 +49,7 @@ get_auth_token () {
     echo "$TOK"
 }
 
-if [ -z '$pass' ] || [ -z '$user' ]; then
+if [ -z "$pass" ] || [ -z "$user" ]; then
   usage
 fi
 
