@@ -10,14 +10,6 @@ RUN apk add --no-cache \
     openssl \
     wireguard-tools
 
-# This is a temporary fix for an issue introduced in openresolv 3.13.0 that has since been fixed
-# Only needed until the fix makes it way to the Alpine repo
-COPY ./libc.patch /tmp/libc.patch
-RUN apk add --no-cache patch && \
-    patch /lib/resolvconf/libc /tmp/libc.patch || echo Patch failed; \
-    apk del patch && \
-    rm /tmp/libc.patch
-
 # Modify wg-quick so it doesn't die without --privileged
 # Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
 # To avoid confusion, also suppress the error message that displays even when pre-set to 1 on container creation
