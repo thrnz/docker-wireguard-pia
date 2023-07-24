@@ -245,9 +245,13 @@ get_wgconf () {
       echo "Using custom DNS servers: $dns"
   fi
 
-  cat <<CONFF > "$wg_out"
-#cn: $wg_cn
-#pf api ip: $pfapi_ip
+  # Store the info needed for port forwarding as comments in the generated config for later use if needed
+  if [ "$port_forward_avail" -eq 1 ]; then
+    echo "#cn: $wg_cn" > "$wg_out"
+    echo "#pf api ip: $pfapi_ip" >> "$wg_out"
+  fi
+
+  cat <<CONFF >> "$wg_out"
 [Interface]
 PrivateKey = $client_private_key
 Address = $peer_ip

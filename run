@@ -294,6 +294,8 @@ if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
     /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
   fi
   pf_pid=$!
+elif [ $PORT_FORWARDING -eq 1 ] && [ -z "$pf_api_ip" ]; then
+  echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
 fi
 
 [ -x "$post_up_script" ] && run_command "$post_up_script"
