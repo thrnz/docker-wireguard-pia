@@ -150,18 +150,18 @@ get_auth_token () {
 # Remove previous forwarded port number dump file if requested and present
 [ $PORT_FILE_CLEANUP -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
 
+# LOC is ignored and may be blank if ip/cn/port override vars or a dedicated ip are used
+[ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ] && LOC="manual"
+[ -n "$PIA_DIP_TOKEN" ] && LOC="dip"
+
 # No LOC or specific ip/port/cn supplied
-if [ -z "$PIA_CN" ] || [ -z "$PIA_IP" ] || [ -z "$PIA_PORT" ]; then
-  [ -z "$LOC" ] && /scripts/wg-gen.sh -a && fatal_error
-fi
+[ -z "$LOC" ] && /scripts/wg-gen.sh -a && fatal_error
 
 [ ! -r "$tokenfile" ] && get_auth_token
 
 # Generate wg0.conf
 # LOC can be a single location id, or a space or comma separated list
 # Multiple location ids are used as fallback if the initial registration fails
-# LOC is ignored and may be blank if ip/cn/port override vars are set
-[ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ] && LOC="manual"
 gen_success=0
 for location in ${LOC//,/ }; do
   gen_wgconf "$location"

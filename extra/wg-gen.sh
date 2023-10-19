@@ -20,6 +20,12 @@
 #   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf
 #   wg-gen.sh -l swiss -t ~/.token -o ~/wg.conf -k ~/pubkey.pem -d 8.8.8.8,8.8.4.4
 #
+# To force the use of a specific server, the PIA_IP PIA_PORT and PIA_CN env vars must all be set
+# eg: $ PIA_IP=1.2.3.4 PIA_PORT=1337 PIA_CN=hostname401 wg-gen.sh -t ~/.token -o ~/wg.conf
+#
+# To use a dedicated ip, the PIA_DIP_TOKEN env var must be set
+# eg: $ PIA_DIP_TOKEN=DIPabc123 wg-gen.sh -t ~/.token -o ~/wg.conf
+#
 # Available servers can be found here:
 #  https://serverlist.piaservers.net/vpninfo/servers/v4
 # The public key for verifying the server list can be found here:
@@ -107,6 +113,33 @@ verify_serverlist ()
   fi
 }
 
+get_dip_serverinfo ()
+{
+  echo "$(date): Fetching dedicated ip server info"
+  dip_response=$(curl --silent --show-error $curl_params --location --request POST \
+  'https://www.privateinternetaccess.com/api/client/v2/dedicated_ip' \
+  --header 'Content-Type: application/json' \
+  --header "Authorization: Token $(cat $tokenfile)" \
+  --data-raw '{
+    "tokens":["'"$PIA_DIP_TOKEN"'"]
+  }')
+
+  if [ "$(jq -r '.[0].status' <<< "$dip_response")" != "active" ]; then
+    echo "$(date): Failed to fetch dedicated ip server info. Response:"
+    echo "$dip_response"
+    fatal_error
+  fi
+
+  wg_port=1337
+  wg_cn=$(jq -r '.[0].cn' <<< "$dip_response")
+  wg_ip=$(jq -r '.[0].ip' <<< "$dip_response")
+
+  echo "$(date): Dedicated ip: $wg_ip, cn: $wg_cn"
+
+  # PIA's standalone scripts seem to assume port forwarding is available everywhere apart from the us
+  [[ $(jq -r '.[0].id' <<< "$dip_response") != us_* ]] && port_forward_avail=1
+}
+
 get_servers() {
   echo "Fetching next-gen PIA server list"
   curl --silent --show-error $curl_params \
@@ -149,20 +182,29 @@ get_wgconf () {
     pia_cacert="$pia_cacert_tmp"
   fi
 
-  echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
-  curl --get --silent --show-error $curl_params \
-    --data-urlencode "pubkey=$client_public_key" \
-    --data-urlencode "pt=$(cat $tokenfile)" \
-    --cacert "$pia_cacert" \
-    --resolve "$wg_cn:$wg_port:$wg_ip" \
-    "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
+  if [ -n "$PIA_DIP_TOKEN" ]; then
+    echo "Registering public key with PIA dedicated ip endpoint; cn: $wg_cn, ip: $wg_ip"
+    curl --get --silent --show-error $curl_params \
+      --user "dedicated_ip_$PIA_DIP_TOKEN:$wg_ip" \
+      --data-urlencode "pubkey=$client_public_key" \
+      --cacert "$pia_cacert" \
+      --resolve "$wg_cn:$wg_port:$wg_ip" \
+      "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
+  else
+    echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
+    curl --get --silent --show-error $curl_params \
+      --data-urlencode "pubkey=$client_public_key" \
+      --data-urlencode "pt=$(cat $tokenfile)" \
+      --cacert "$pia_cacert" \
+      --resolve "$wg_cn:$wg_port:$wg_ip" \
+      "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
+  fi
 
   [ "$(jq -r .status "$addkey_response")" == "ERROR" ] && [ "$(jq -r .message "$addkey_response")" == "Login failed!" ] && echo "Auth failed" && fatal_error 2
   [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error 4
 
   peer_ip="$(jq -r .peer_ip "$addkey_response")"
   server_public_key="$(jq -r .server_key "$addkey_response")"
-  server_ip="$(jq -r .server_ip "$addkey_response")"
   server_port="$(jq -r .server_port "$addkey_response")"
   pfapi_ip="$(jq -r .server_vip "$addkey_response")"
 
@@ -197,7 +239,7 @@ CONFF
 [Peer]
 PublicKey = $server_public_key
 AllowedIPs = 0.0.0.0/0
-Endpoint = $server_ip:$server_port
+Endpoint = $wg_ip:$server_port
 CONFF
 
 }
@@ -221,8 +263,10 @@ servers_sig=$(mktemp)
 servers_json=$(mktemp)
 addkey_response=$(mktemp)
 
+if [ -n "$PIA_DIP_TOKEN" ]; then
+  get_dip_serverinfo
 # Set env vars PIA_CN, PIA_IP and PIA_PORT to connect to a specific server
-if [ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ]; then
+elif [ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ]; then
   wg_cn="$PIA_CN"
   wg_ip="$PIA_IP"
   wg_port="$PIA_PORT"
