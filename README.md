@@ -44,10 +44,9 @@ Custom commands and/or scripts can be run at certain stages of the container's l
 In addition, scripts mounted in `/pia/scripts` named `pre-up.sh`, `post-up.sh`, `pre-down.sh` and `post-down.sh` will be run at the appropriate stage if present. See [issue #33](https://github.com/thrnz/docker-wireguard-pia/issues/33) for more info.
 
 ## Notes
-* Based on what was found in the source code to the PIA desktop app.
+* Generating WireGuard configs and port forwarding was based on what was found in the source code to the PIA desktop app.
 * As of Sep 2020, PIA have released [scripts](https://github.com/pia-foss/manual-connections) for using WireGuard outside of their app.
-* Only tested on a Debian Buster host. May or may not work as expected on other hosts.
-* PIA username/password is only used on the first run. A persistent auth token is generated and will be re-used for future runs.
+* For simplicity, most of the network setup is handled by `wg-quick`.
 * Persistent data is stored in ```/pia```.
 * IPv4 only. IPv6 traffic is blocked unless using ```FIREWALL=0``` but you may want to disable IPv6 on the container anyway.
 * An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is included. Some more working examples can be found [here](https://github.com/thrnz/docker-wireguard-pia/wiki/Examples).
@@ -62,5 +61,3 @@ Some bits and pieces and ideas have been borrowed from the following:
 * https://github.com/dperson/openvpn-client
 * https://github.com/pia-foss/desktop
 * https://gist.github.com/triffid/da48f3c99f1ff334571ae49be80d591b
-* https://stackoverflow.com/a/54595564
-* https://github.com/ckulka/docker-multi-arch-example
