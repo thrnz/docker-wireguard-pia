@@ -3,7 +3,7 @@
 A Docker container for using WireGuard with PIA.
 
 ## Requirements
-* Ideally the host must already support WireGuard. Pre 5.6 kernels may need to have the module manually installed. If this is not possible, then a userspace implementation can be enabled using the WG_USERSPACE environment variable.
+* Ideally the host must already support WireGuard. Pre 5.6 kernels may need to have the module manually installed. `wg-quick` should automatically fall back to a userspace implementation (`wireguard-go`) if the kernel module is missing, however the container may need access to the `/dev/net/tun` device for this to work.
 * An active [PIA](https://www.privateinternetaccess.com) subscription.
 
 ## Config
@@ -30,7 +30,6 @@ The rest are optional:
 |```PORT_SCRIPT=/path/to/script.sh```|A mounted custom script can be run inside the container once a port is successfully forwarded if needed. The forwarded port number is passed as the first command line argument. By default this remains unset. See [issue #26](https://github.com/thrnz/docker-wireguard-pia/issues/26) for more info.
 |```FIREWALL=0/1```|Whether to block non-WireGuard traffic. Defaults to 1 if not specified.
 |```EXIT_ON_FATAL=0/1```|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behaviour if other containers are sharing the connection.
-|```WG_USERSPACE=0/1```|If the host OS or host Linux kernel does not support WireGuard (certain NAS systems), a userspace implementation ([wireguard-go](https://git.zx2c4.com/wireguard-go/about/)) can be enabled. Defaults to 0 if not specified.
 |```USER_FILE=/run/secrets/pia-username``` ```PASS_FILE=/run/secrets/pia-password```|PIA credentials can also be read in from existing files (eg for use with Docker secrets)
 |```PIA_IP=x.x.x.x``` ```PIA_CN=hostname401``` ```PIA_PORT=1337```|Connect to a specific server by manually setting all three of these. This will override whatever ```LOC``` is set to.
 |```FWD_IFACE``` ```PF_DEST_IP```|If needed, the container can be used as a gateway for other containers or devices by setting these. See [issue #20](https://github.com/thrnz/docker-wireguard-pia/issues/20) for more info. Note that these are for a specific use case, and in many cases using Docker's ```--net=container:xyz``` or docker-compose's ```network_mode: service:xyz``` instead, and leaving these vars unset, would be an easier way of accessing the VPN and forwarded port from other containers.

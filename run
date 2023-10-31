@@ -9,7 +9,6 @@
 [[ "$PORT_FILE_CLEANUP" =~ ^[0-1]$ ]] || PORT_FILE_CLEANUP=0
 [[ "$PORT_FORWARDING" =~ ^[0-1]$ ]] || PORT_FORWARDING=0
 [[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
-[[ "$WG_USERSPACE" =~ ^[0-1]$ ]] || WG_USERSPACE=0
 [[ "$NFTABLES" =~ ^[0-1]$ ]] || NFTABLES=0
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
@@ -90,11 +89,7 @@ finish () {
   echo "$(date): Shutting down WireGuard"
   # Remove forwarded port number dump file if requested
   [ $PORT_FILE_CLEANUP -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
-  if [ $WG_USERSPACE -eq 1 ]; then
-    WG_QUICK_USERSPACE_IMPLEMENTATION=wireguard-go wg-quick down wg0
-  else
-    wg-quick down wg0
-  fi
+  wg-quick down wg0
   [ -x "$post_down_script" ] && run_command "$post_down_script"
   [ -n "$POST_DOWN" ] && run_command "$POST_DOWN"
   exit 0
@@ -197,11 +192,7 @@ fi
 
 # Bring up Wireguard interface
 echo "$(date): Bringing up WireGuard interface wg0"
-if [ $WG_USERSPACE -eq 1 ]; then
-  WG_QUICK_USERSPACE_IMPLEMENTATION=wireguard-go wg-quick up wg0 || fatal_error
-else
-  wg-quick up wg0 || fatal_error
-fi
+wg-quick up wg0 || fatal_error
 
 # Print out wg interface info
 echo
