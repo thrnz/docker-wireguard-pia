@@ -124,6 +124,8 @@ get_dip_serverinfo ()
     "tokens":["'"$PIA_DIP_TOKEN"'"]
   }')
 
+  [ "$dip_response" == "HTTP Token: Access denied." ] && echo "Auth failed" && fatal_error 2
+
   if [ "$(jq -r '.[0].status' <<< "$dip_response")" != "active" ]; then
     echo "$(date): Failed to fetch dedicated ip server info. Response:"
     echo "$dip_response"
