@@ -9,7 +9,6 @@
 [[ "$PORT_FILE_CLEANUP" =~ ^[0-1]$ ]] || PORT_FILE_CLEANUP=0
 [[ "$PORT_FORWARDING" =~ ^[0-1]$ ]] || PORT_FORWARDING=0
 [[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
-[[ "$NFTABLES" =~ ^[0-1]$ ]] || NFTABLES=0
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
 # Maybe also check the following. They are all blank by default.
@@ -64,21 +63,25 @@ firewall_init () {
   iptables -A OUTPUT -p tcp --dport 1337 -j ACCEPT
 }
 
-# Repalce iptables symlinks if needed
-# This seems a bit blunt, does Alpine have a 'correct' way of doing this?
+# Alpine 3.19 changed the default iptables backend to iptables-nft
+# Check that the host supports this and revert to iptables-legacy if needed
 nftables_setup () {
+  # Run an iptables command to see if things are working
+  iptables -L &> /dev/null && return
+  # If not, change to legacy
+  echo "$(date): Falling back to iptables-legacy"
   rm /sbin/iptables
   rm /sbin/iptables-save
   rm /sbin/iptables-restore
   rm /sbin/ip6tables
   rm /sbin/ip6tables-save
   rm /sbin/ip6tables-restore
-  ln -s /sbin/xtables-nft-multi /sbin/iptables
-  ln -s /sbin/xtables-nft-multi /sbin/iptables-save
-  ln -s /sbin/xtables-nft-multi /sbin/iptables-restore
-  ln -s /sbin/xtables-nft-multi /sbin/ip6tables
-  ln -s /sbin/xtables-nft-multi /sbin/ip6tables-save
-  ln -s /sbin/xtables-nft-multi /sbin/ip6tables-restore
+  ln -s /sbin/xtables-legacy-multi /sbin/iptables
+  ln -s /sbin/xtables-legacy-multi /sbin/iptables-save
+  ln -s /sbin/xtables-legacy-multi /sbin/iptables-restore
+  ln -s /sbin/xtables-legacy-multi /sbin/ip6tables
+  ln -s /sbin/xtables-legacy-multi /sbin/ip6tables-save
+  ln -s /sbin/xtables-legacy-multi /sbin/ip6tables-restore
 }
 
 # Handle shutdown behavior
@@ -135,7 +138,7 @@ get_auth_token () {
   chmod 600 "$tokenfile"
 }
 
-[ $NFTABLES -eq 1 ] && nftables_setup
+nftables_setup
 
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
