@@ -33,7 +33,6 @@ The rest are optional:
 |```USER_FILE=/run/secrets/pia-username``` ```PASS_FILE=/run/secrets/pia-password```|PIA credentials can also be read in from existing files (eg for use with Docker secrets)
 |```PIA_IP=x.x.x.x``` ```PIA_CN=hostname401``` ```PIA_PORT=1337```|Connect to a specific server by manually setting all three of these. This will override whatever ```LOC``` is set to.
 |```FWD_IFACE``` ```PF_DEST_IP```|If needed, the container can be used as a gateway for other containers or devices by setting these. See [issue #20](https://github.com/thrnz/docker-wireguard-pia/issues/20) for more info. Note that these are for a specific use case, and in many cases using Docker's ```--net=container:xyz``` or docker-compose's ```network_mode: service:xyz``` instead, and leaving these vars unset, would be an easier way of accessing the VPN and forwarded port from other containers.
-|```NFTABLES=0/1```|Alpine uses `iptables-legacy` by defualt. If needed, `iptables-nft` can be used instead by setting this to 1. Defaults to 0 if not specified. See [issue #37](https://github.com/thrnz/docker-wireguard-pia/issues/37).
 |`PRE_UP` `POST_UP` `PRE_DOWN` `POST_DOWN`|Custom commands and/or scripts can be run at certain stages if needed. See [below](#scripting) for more info.
 |`PIA_DIP_TOKEN`|A dedicated ip token can be used by setting this. When set, `LOC` is not used.
 
