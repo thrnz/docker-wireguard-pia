@@ -70,18 +70,12 @@ nftables_setup () {
   iptables -L &> /dev/null && return
   # If not, change to legacy
   echo "$(date): Falling back to iptables-legacy"
-  rm /sbin/iptables
-  rm /sbin/iptables-save
-  rm /sbin/iptables-restore
-  rm /sbin/ip6tables
-  rm /sbin/ip6tables-save
-  rm /sbin/ip6tables-restore
-  ln -s /sbin/xtables-legacy-multi /sbin/iptables
-  ln -s /sbin/xtables-legacy-multi /sbin/iptables-save
-  ln -s /sbin/xtables-legacy-multi /sbin/iptables-restore
-  ln -s /sbin/xtables-legacy-multi /sbin/ip6tables
-  ln -s /sbin/xtables-legacy-multi /sbin/ip6tables-save
-  ln -s /sbin/xtables-legacy-multi /sbin/ip6tables-restore
+  ln -sf /sbin/xtables-legacy-multi /sbin/iptables
+  ln -sf /sbin/xtables-legacy-multi /sbin/iptables-save
+  ln -sf /sbin/xtables-legacy-multi /sbin/iptables-restore
+  ln -sf /sbin/xtables-legacy-multi /sbin/ip6tables
+  ln -sf /sbin/xtables-legacy-multi /sbin/ip6tables-save
+  ln -sf /sbin/xtables-legacy-multi /sbin/ip6tables-restore
 }
 
 # Handle shutdown behavior
@@ -220,6 +214,7 @@ if [ $FIREWALL -eq 1 ]; then
     [[ "$iface" = @(lo|wg0) ]] && continue
     docker_network="$(ip -o addr show dev "$iface"|
             awk '$3 == "inet" {print $4}')"
+    [ -z "$docker_network" ] &&  continue
     echo "$(date): Allowing network access to $docker_network on $iface"
     iptables -A OUTPUT -o "$iface" --destination "$docker_network" -j ACCEPT
     iptables -A INPUT -i "$iface" --source "$docker_network" -j ACCEPT

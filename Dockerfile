@@ -4,7 +4,6 @@ RUN apk add --no-cache \
     bash \
     ca-certificates \
     curl \
-    ip6tables \
     iptables \
     iptables-legacy \
     jq \
@@ -17,7 +16,7 @@ RUN apk add --no-cache \
 RUN sed -i 's/cmd sysctl.*/set +e \&\& sysctl -q net.ipv4.conf.all.src_valid_mark=1 \&> \/dev\/null \&\& set -e/' /usr/bin/wg-quick
 
 # Install wireguard-go as a fallback if wireguard is not supported by the host OS or Linux kernel
-RUN apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing wireguard-go
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing wireguard-go
 
 # Get the PIA CA cert
 ADD https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt /rsa_4096.crt
