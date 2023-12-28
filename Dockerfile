@@ -18,6 +18,11 @@ RUN sed -i 's/cmd sysctl.*/set +e \&\& sysctl -q net.ipv4.conf.all.src_valid_mar
 # Install wireguard-go as a fallback if wireguard is not supported by the host OS or Linux kernel
 RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing wireguard-go
 
+# There appears to be curl name resolution issues on some setups when using c-ares 1.22
+# Replacing with a newer version (currently 1.24) from the edge repo appears to fix it
+# This is only a temporary fix, and can be removed once the newer version makes its way into Alpine 3.19
+RUN apk upgrade --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main c-ares
+
 # Get the PIA CA cert
 ADD https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt /rsa_4096.crt
 
