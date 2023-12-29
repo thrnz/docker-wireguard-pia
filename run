@@ -103,6 +103,7 @@ now_sleep () {
 # An error with no recovery logic occured. Either go to sleep or exit.
 fatal_error () {
   echo "$(date): Fatal error"
+  [ -n "$FATAL_SCRIPT" ] && run_command "$FATAL_SCRIPT"
   [ $EXIT_ON_FATAL -eq 1 ] && exit 1
   sleep infinity &
   wait $!
