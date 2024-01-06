@@ -49,6 +49,7 @@ In addition, scripts mounted in `/pia/scripts` named `pre-up.sh`, `post-up.sh`, 
 * For simplicity, most of the network setup is handled by `wg-quick`.
 * Persistent data is stored in ```/pia```.
 * IPv4 only. IPv6 traffic is blocked unless using ```FIREWALL=0``` but you may want to disable IPv6 on the container anyway.
+* If strict reverse path filtering is used, then the `net.ipv4.conf.all.src_valid_mark=1` sysctl should be set on container creation to prevent incoming packets being dropped. See [issue #96](https://github.com/thrnz/docker-wireguard-pia/issues/96) for more info.
 * An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is included. Some more working examples can be found [here](https://github.com/thrnz/docker-wireguard-pia/wiki/Examples).
 * Other containers can share the VPN connection using Docker's [```--net=container:xyz```](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [```network_mode: service:xyz```](https://github.com/compose-spec/compose-spec/blob/master/spec.md#network_mode).
 * Standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) are available for use outside of Docker.

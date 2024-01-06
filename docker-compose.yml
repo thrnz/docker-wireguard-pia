@@ -25,7 +25,9 @@ services:
             #- VPNDNS=8.8.8.8,8.8.4.4
             #- PORT_FORWARDING=1
         sysctls:
-            # wg-quick fails to set this without --privileged, so set it here instead if needed
+            # The wg-quick script tries to set this when setting up routing, however this requires running the container
+            # with the --privileged flag set. Setting it here instead if needed means the container can be run with lower
+            # privileges. This only needs setting if strict reverse path filtering (rp_filter=1) is used.
             - net.ipv4.conf.all.src_valid_mark=1
             # May as well disable ipv6. Should be blocked anyway.
             - net.ipv6.conf.default.disable_ipv6=1
