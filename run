@@ -208,6 +208,12 @@ echo
 
 echo "$(date): WireGuard successfully started"
 
+# Show a warning if src_valid_mark=1 needs setting, otherwise incoming packets will be dropped
+effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
+[ "$(sysctl -n net.ipv4.conf.default.rp_filter)" -gt "$effective_rp_filter" ] && effective_rp_filter="$(sysctl -n net.ipv4.conf.default.rp_filter)"
+[ "$effective_rp_filter" -eq 1 ] && [ "$(sysctl -n net.ipv4.conf.all.src_valid_mark)" -ne 1 ] && \
+  echo "$(date): Warning: Container requires net.ipv4.conf.all.src_valid_mark=1 sysctl to be set when rp_filter is set to strict. See the README for more info."
+
 # Add qdisc to wg0 if requested
 # eg: QDISC=cake bandwidth 20Mbit
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
