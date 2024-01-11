@@ -172,7 +172,7 @@ for location in ${LOC//,/ }; do
     # Reauth and retry if auth failed
     # An auth error implies that the location id is valid and the endpoint responsive
     get_auth_token
-    gen_wgconf "$LOC" || fatal_error
+    gen_wgconf "$location" || fatal_error
   elif [ "$result" -eq 3 ]; then
     # Location not found
     echo "$(date): Location $location not found"
