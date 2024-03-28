@@ -173,6 +173,7 @@ for location in ${LOC//,/ }; do
   if [ "$result" -eq 2 ]; then
     # Reauth and retry if auth failed
     # An auth error implies that the location id is valid and the endpoint responsive
+    rm "$tokenfile"
     get_auth_token
     gen_wgconf "$location" || fatal_error
   elif [ "$result" -eq 3 ]; then
