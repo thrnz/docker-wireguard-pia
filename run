@@ -136,9 +136,11 @@ get_auth_token () {
   [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
   [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
   echo "$(date): Generating auth token"
-  if ! /scripts/pia-auth.sh -u "$USER" -p "$PASS" > "$tokenfile"; then
+  local token
+  if ! token=$(/scripts/pia-auth.sh -u "$USER" -p "$PASS"); then
     echo "$(date): Failed to acquire new auth token" && fatal_error
   fi
+  echo "$token" > "$tokenfile"
   chmod 600 "$tokenfile"
 }
 
