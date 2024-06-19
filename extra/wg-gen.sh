@@ -26,8 +26,11 @@
 # To use a dedicated ip, the PIA_DIP_TOKEN env var must be set
 # eg: $ PIA_DIP_TOKEN=DIPabc123 wg-gen.sh -t ~/.token -o ~/wg.conf
 #
+# API requests can be sent via PIA's 'meta' servers by setting the META_IP META_CN and META_PORT env vars
+# eg: $ META_IP=123.45.67.89 META_CN=hostname401 META_PORT=443 ./wg-gen.sh -t ~/.token ~/wg.conf
+#
 # Available servers can be found here:
-#  https://serverlist.piaservers.net/vpninfo/servers/v4
+#  https://serverlist.piaservers.net/vpninfo/servers/v6
 # The public key for verifying the server list can be found here:
 #  https://github.com/pia-foss/desktop/blob/122710c6ada5db83620c63faff2d805ea52d7f40/daemon/src/environment.cpp#L30
 # The PIA ca cert can be found here:
@@ -42,6 +45,8 @@
 # 2: Auth error
 # 3: Invalid server location
 # 4: Registration failed
+
+[ -n "$DEBUG" ] && set -o xtrace
 
 fatal_error () {
   cleanup
@@ -115,14 +120,26 @@ verify_serverlist ()
 
 get_dip_serverinfo ()
 {
-  echo "$(date): Fetching dedicated ip server info"
-  dip_response=$(curl --silent --show-error $curl_params --location --request POST \
-  'https://www.privateinternetaccess.com/api/client/v2/dedicated_ip' \
-  --header 'Content-Type: application/json' \
-  --header "Authorization: Token $(cat $tokenfile)" \
-  --data-raw '{
-    "tokens":["'"$PIA_DIP_TOKEN"'"]
-  }')
+  if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
+    echo "$(date): Fetching dedicated ip server info via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
+    dip_response=$(curl --silent --show-error $curl_params --location --request POST \
+    "https://$META_CN:$META_PORT/api/client/v2/dedicated_ip" \
+    --header 'Content-Type: application/json' \
+    --header "Authorization: Token $(cat $tokenfile)" \
+    --cacert "$pia_cacert" --resolve "$META_CN:$META_PORT:$META_IP" \
+    --data-raw '{
+      "tokens":["'"$PIA_DIP_TOKEN"'"]
+    }')
+  else
+    echo "$(date): Fetching dedicated ip server info"
+    dip_response=$(curl --silent --show-error $curl_params --location --request POST \
+    'https://www.privateinternetaccess.com/api/client/v2/dedicated_ip' \
+    --header 'Content-Type: application/json' \
+    --header "Authorization: Token $(cat $tokenfile)" \
+    --data-raw '{
+      "tokens":["'"$PIA_DIP_TOKEN"'"]
+    }')
+  fi
 
   [ "$dip_response" == "HTTP Token: Access denied." ] && echo "Auth failed" && fatal_error 2
 
@@ -143,9 +160,15 @@ get_dip_serverinfo ()
 }
 
 get_servers() {
-  echo "Fetching next-gen PIA server list"
-  curl --silent --show-error $curl_params \
-              "https://serverlist.piaservers.net/vpninfo/servers/v6" > "$servers_raw"
+  if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
+    echo "Fetching next-gen PIA server list via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
+    curl --silent --show-error $curl_params --cacert "$pia_cacert" --resolve "$META_CN:$META_PORT:$META_IP" \
+      "https://$META_CN:$META_PORT/vpninfo/servers/v6" > "$servers_raw"
+  else
+    echo "Fetching next-gen PIA server list"
+    curl --silent --show-error $curl_params \
+      "https://serverlist.piaservers.net/vpninfo/servers/v6" > "$servers_raw"
+  fi
   head -n 1 "$servers_raw" | tr -d '\n' > "$servers_json"
   tail -n +3 "$servers_raw" | base64 -d > "$servers_sig"
   [ -n "$pia_pubkey" ] && verify_serverlist
