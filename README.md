@@ -3,8 +3,12 @@
 A Docker container for using WireGuard with PIA.
 
 ## Requirements
-* Ideally the host must already support WireGuard. Pre 5.6 kernels may need to have the module manually installed. `wg-quick` should automatically fall back to a userspace implementation (`wireguard-go`) if the kernel module is missing, however the container may need access to the `/dev/net/tun` device for this to work.
+* Ideally the host should already support WireGuard. Pre 5.6 kernels may need to have the module manually installed. `wg-quick` should automatically fall back to a userspace implementation (`wireguard-go`) if needed, however the container may need access to the `/dev/net/tun` device for this to work.
+* The container requires the `NET_ADMIN` [capability](https://docs.docker.com/compose/compose-file/05-services/#cap_add). `SYS_MODULE` may also be needed in some cases, especially when WireGuard support is provided via kernel module.
 * An active [PIA](https://www.privateinternetaccess.com) subscription.
+
+## Examples
+An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is available. Some more working examples can be found [here](https://github.com/thrnz/docker-wireguard-pia/wiki/Examples).
 
 ## Config
 The following ENV vars are required:
@@ -52,9 +56,6 @@ Firewall rules are added dropping all traffic by default, and only encrypted/tun
 Other containers can access the VPN connection using Docker's [`--net=container:xyz`](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [`network_mode: service:xyz`](https://github.com/compose-spec/compose-spec/blob/master/spec.md#network_mode). Note that network related settings for other containers (such as exposing ports) need to be set on the VPN container itself.
 
 The container doesn't support IPv6. Any IPv6 traffic is dropped unless using `FIREWALL=0`, though it might be worth disabling IPv6 on container creation anyway.
-
-## Examples
-An example [docker-compose.yml](https://github.com/thrnz/docker-wireguard-pia/blob/master/docker-compose.yml) is available. Some more working examples can be found [here](https://github.com/thrnz/docker-wireguard-pia/wiki/Examples).
 
 ## Notes
 * WireGuard config generation and port forwarding was based on what was found in the source code to the PIA desktop app. The standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) used by the container are available for use outside of Docker.
