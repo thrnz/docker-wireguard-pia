@@ -225,7 +225,7 @@ get_wgconf () {
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
   fi
 
-  [ "$(jq -r .status "$addkey_response")" == "ERROR" ] && [ "$(jq -r .message "$addkey_response")" == "Login failed!" ] && echo "Auth failed" && fatal_error 2
+  [ "$(jq -r .status "$addkey_response")" == "ERROR" ] && [ "$(jq -r .message "$addkey_response")" == "Login failed!" ] && echo "Auth failed" && cat "$addkey_response" && fatal_error 2
   [ "$(jq -r .status "$addkey_response")" != "OK" ] && echo "WG key registration failed" && cat "$addkey_response" && fatal_error 4
 
   peer_ip="$(jq -r .peer_ip "$addkey_response")"
