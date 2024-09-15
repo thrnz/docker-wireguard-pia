@@ -1,4 +1,3 @@
-version: '3'
 services:
     vpn:
         image: thrnz/docker-wireguard-pia
@@ -34,11 +33,15 @@ services:
             - net.ipv6.conf.all.disable_ipv6=1
             - net.ipv6.conf.lo.disable_ipv6=1
         # The container has no recovery logic. Use a healthcheck to catch disconnects.
+        # This can also be used to ensure the vpn is up before starting other containers
+        # using the vpn connection
         healthcheck:
             test: ping -c 1 www.google.com || exit 1
-            interval: 30s
+            interval: 300s
             timeout: 10s
             retries: 3
+            start_period: 30s
+            start_interval: 3s
 
     # Example of another service sharing the VPN
     # If this service needs LAN access then LOCAL_NETWORK must be set appropriatley on the vpn container
@@ -48,10 +51,15 @@ services:
     # to keep the vpn isolated from the LAN
     other-service:
         image: some-other-image
-        # Other services can share the VPN using 'network_mode'
-        # See https://docs.docker.com/engine/reference/run/#network-container and
-        # https://docs.docker.com/compose/compose-file/compose-file-v3/#network_mode
+        # Other services can share the VPN using 'network_mode: "service:[service name]"'
+        # See https://docs.docker.com/engine/network/#container-networks and
+        # https://docs.docker.com/reference/compose-file/services/#network_mode
         network_mode: "service:vpn"
+        # The following can be used to ensure the vpn is up and functional before the dependant service is started
+        depends_on:
+            vpn:
+                condition: service_healthy
+
 
     # Other containers can access the forwarded port number via /pia-shared/port.dat
     # Here's an example of a bare-bones 'helper' container that passes the forwarded port to Deluge

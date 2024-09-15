@@ -53,7 +53,7 @@ To keep things simple, network setup is mostly handled by `wg-quick`. All traffi
 
 Firewall rules are added dropping all traffic by default, and only encrypted/tunneled traffic, attached Docker network traffic, and `LOCAL_NETWORK` traffic is explicitly allowed. This can be disabled by setting the `FIREWALL=0` env var if desired.
 
-Other containers can access the VPN connection using Docker's [`--net=container:xyz`](https://docs.docker.com/engine/reference/run/#network-settings) or docker-compose's [`network_mode: service:xyz`](https://github.com/compose-spec/compose-spec/blob/master/spec.md#network_mode). Note that network related settings for other containers (such as exposing ports) need to be set on the VPN container itself.
+Other containers can access the VPN connection using Docker's [`--net=container:xyz`](https://docs.docker.com/engine/network/#container-networks) or docker-compose's [`network_mode: service:xyz`](https://docs.docker.com/reference/compose-file/services/#network_mode). Note that network related settings for other containers (such as exposing ports) need to be set on the VPN container itself.
 
 The container doesn't support IPv6. Any IPv6 traffic is dropped unless using `FIREWALL=0`, though it might be worth disabling IPv6 on container creation anyway.
 
