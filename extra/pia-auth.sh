@@ -78,7 +78,7 @@ get_auth_token () {
         --form "password=$pass")
   fi
   TOK=$(jq -r .'token' <<< "$token_response")
-  if [ -z "$TOK" ]; then
+  if [ -z "$TOK" ] || [ "$TOK" == "null" ]; then
     echo "Failed to acquire new auth token. Response:" >&2
     echo "$token_response" >&2
     exit 1
