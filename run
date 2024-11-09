@@ -256,7 +256,13 @@ fi
 if [ -n "$LOCAL_NETWORK" ]; then
   iface=$(ip route show default | awk '/default/ {print $5}')
   gaddr=$(ip route show default | awk '/default/ {print $3}')
+  [ -z "$VPNDNS" ] && pia_dns=$(grep 'DNS = ' "$wg_conf" | sed 's/DNS = \(.*\)/\1/')
   for range in ${LOCAL_NETWORK//,/ }; do
+    if [ -n "$pia_dns" ]; then
+      grepcidr "$range" <(echo "$pia_dns") >/dev/null && \
+        echo "$(date): Warning: LOCAL_NETWORK range $range overlaps with PIA's default dns servers ($pia_dns)" && \
+        echo "$(date): Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
+    fi
     if [ $FIREWALL -eq 1 ]; then
       echo "$(date): Allowing network access to $range on $iface"
       iptables -A OUTPUT -o "$iface" --destination "$range" -j ACCEPT

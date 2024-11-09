@@ -4,6 +4,7 @@ RUN apk add --no-cache \
     bash \
     ca-certificates \
     curl \
+    grepcidr3 \
     iptables \
     iptables-legacy \
     jq \
