@@ -63,6 +63,7 @@ The container doesn't support IPv6. Any IPv6 traffic is dropped unless using `FI
 * Persistent data is stored in ```/pia```.
 * If strict reverse path filtering is used, then the `net.ipv4.conf.all.src_valid_mark=1` sysctl should be set on container creation to prevent incoming packets being dropped. See [issue #96](https://github.com/thrnz/docker-wireguard-pia/issues/96) for more info.
 * The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun)) might be beneficial.
+* Container images are available on both Docker Hub (`thrnz/docker-wireguard-pia`) and GitHub's Container Registry (`ghcr.io/thrnz/docker-wireguard-pia`). Images are rebuilt monthly to keep Alpine packages up to date.
 
 ## Credits
 Some bits and pieces and ideas have been borrowed from the following:
