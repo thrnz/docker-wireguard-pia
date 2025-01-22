@@ -30,7 +30,7 @@ COPY ./RegionsListPubKey.pem /RegionsListPubKey.pem
 WORKDIR /scripts
 
 # Copy scripts to containers
-COPY run pf_success.sh ./extra/pf.sh ./extra/pia-auth.sh ./extra/wg-gen.sh /scripts/
+COPY run healthcheck.sh pf_success.sh ./extra/pf.sh ./extra/pia-auth.sh ./extra/wg-gen.sh /scripts/
 RUN chmod 755 /scripts/*
 
 # Store persistent PIA stuff here (auth token, server list)
@@ -38,5 +38,8 @@ VOLUME /pia
 
 # Store stuff that might be shared with another container here (eg forwarded port)
 VOLUME /pia-shared
+
+HEALTHCHECK --interval=1m --timeout=3s --start-period=30s --start-interval=1s --retries=3 \
+    CMD /scripts/healthcheck.sh || exit 1
 
 CMD ["/scripts/run"]
