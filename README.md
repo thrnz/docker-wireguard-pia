@@ -24,7 +24,7 @@ The rest are optional:
 | ENV Var | Function |
 |-------|------|
 |```LOCAL_NETWORK=192.168.1.0/24```|Whether to route and allow input/output traffic to the LAN. LAN access will be unavailable if not specified. Multiple ranges can be specified, separated by a comma or space. Note that there may be DNS issues if this overlaps with PIA's default DNS servers (`10.0.0.243` and `10.0.0.242` as of July 2022). Custom DNS servers can be defined using `VPNDNS` (see below) if this is an issue.
-|```KEEPALIVE=25```|If defined, PersistentKeepalive will be set to this in the WireGuard config.
+|```KEEPALIVE=25```|If defined, PersistentKeepalive will be set to this in the WireGuard config. This can be used to ensure incoming packets on an idle link aren't lost when behind NAT. The [WireGuard QuickStart guide](https://www.wireguard.com/quickstart/) suggests a value of 25 if needed. By default this remains unset.
 |```MTU=1420```|This can be used to override ```wg-quick```'s automatic MTU setting on the Wireguard interface if needed. By default this remains unset (ie. let ```wg-quick``` choose).
 |```VPNDNS=8.8.8.8, 8.8.4.4```|Use these DNS servers in the WireGuard config. PIA's DNS servers will be used if not specified. Use 0 to disable making any changes to the default container DNS settings. (Note: Using any DNS servers other than PIA's may lead to DNS queries being leaked outside the VPN connection.)
 |```PORT_FORWARDING=0/1```|Whether to enable port forwarding. Requires a supported server. Defaults to 0 if not specified.
@@ -34,7 +34,7 @@ The rest are optional:
 |`PORT_FATAL=0/1`|Whether to consider port forwarding errors as fatal or not. May be useful when combined with `EXIT_ON_FATAL` if needed. Defaults to 0 if not specified.
 |```PORT_SCRIPT=/path/to/script.sh```|A mounted custom script can be run inside the container once a port is successfully forwarded if needed. The forwarded port number is passed as the first command line argument. By default this remains unset. See [issue #26](https://github.com/thrnz/docker-wireguard-pia/issues/26) for more info.
 |```FIREWALL=0/1```|Whether to block non-WireGuard traffic. Defaults to 1 if not specified.
-|```EXIT_ON_FATAL=0/1```|There is no error recovery logic at this stage. If something goes wrong we simply go to sleep. By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behaviour if other containers are sharing the connection.
+|```EXIT_ON_FATAL=0/1```|By default the container will continue running until manually stopped. Set this to 1 to force the container to exit when an error occurs. Exiting on an error may not be desirable behaviour if other containers are sharing the connection.
 |```FATAL_SCRIPT=/path/to/script.sh```|A mounted custom script can be run inside the container if a fatal error occurs. By default this remains unset.
 |```USER_FILE=/run/secrets/pia-username``` ```PASS_FILE=/run/secrets/pia-password```|PIA credentials can also be read in from existing files (eg for use with Docker secrets)
 |```PIA_IP=x.x.x.x``` ```PIA_CN=hostname401``` ```PIA_PORT=1337```|Connect to a specific server by manually setting all three of these. This will override whatever ```LOC``` is set to.
@@ -42,6 +42,8 @@ The rest are optional:
 |`PRE_UP` `POST_UP` `PRE_DOWN` `POST_DOWN`|Custom commands and/or scripts can be run at certain stages if needed. See [below](#scripting) for more info.
 |`PIA_DIP_TOKEN`|A dedicated ip token can be used by setting this. When set, `LOC` is not used.
 |`META_IP=x.x.x.x` `META_CN=hostname401` `META_PORT=443`|On startup, the container needs untunnelled access to PIA's API in order to download the server list and to generate a persistent auth token if needed. Optionally, PIA's 'meta' servers (found in PIA's [server list](https://serverlist.piaservers.net/vpninfo/servers/v6)) can be used instead of the default API endpoints by setting `META_IP` and `META_CN`. These can be set to a different location than `LOC`. `META_PORT` is optional and defaults to 443, although 8080 also appears to be available. See [issue #109](https://github.com/thrnz/docker-wireguard-pia/issues/109) for more info.
+|`ACTIVE_HEALTHCHECKS=0/1`|The container contains a very basic Docker [healthcheck](https://docs.docker.com/reference/dockerfile/#healthcheck) script that can be used to ensure the VPN is up before starting other services. By default only passive checks that don't generate any traffic are run. Set this to 1 to also allow checks that generate traffic, such as `ping`, in order to detect if the remote endpoint is responding.
+|`HEALTHCHECK_PING_TARGET`|When active healthchecks are enabled, this can be used to override the address that gets pinged when testing that the endpoint is still responding. Defaults to `www.privateinternetaccess.com`.
 
 ## Scripting
 Custom commands and/or scripts can be run at certain stages of the container's life-cycle by setting the `PRE_UP`, `POST_UP`, `PRE_DOWN`, and `POST_DOWN` env vars. `PRE_UP` is run prior to generating the WireGuard config, `POST_UP` is run after the WireGuard interface is brought up, and `PRE_DOWN` and `POST_DOWN` are run before and after the interface is brought down again when the container exits.
@@ -53,9 +55,11 @@ To keep things simple, network setup is mostly handled by `wg-quick`. All traffi
 
 Firewall rules are added dropping all traffic by default, and only encrypted/tunneled traffic, attached Docker network traffic, and `LOCAL_NETWORK` traffic is explicitly allowed. This can be disabled by setting the `FIREWALL=0` env var if desired.
 
-Other containers can access the VPN connection using Docker's [`--net=container:xyz`](https://docs.docker.com/engine/network/#container-networks) or docker-compose's [`network_mode: service:xyz`](https://docs.docker.com/reference/compose-file/services/#network_mode). Note that network related settings for other containers (such as exposing ports) need to be set on the VPN container itself.
+Other containers can access the VPN connection using Docker's [`--net=container:xyz`](https://docs.docker.com/engine/network/#container-networks) or docker-compose's [`network_mode: service:xyz`](https://docs.docker.com/reference/compose-file/services/#network_mode). Note that network related settings for other containers (such as exposing ports) need to be set on the VPN container itself. When the VPN container is brought down or recreated, Docker appears to bring down the shared network with it, so other containers may also require recreating to regain network access.
 
 The container doesn't support IPv6. Any IPv6 traffic is dropped unless using `FIREWALL=0`, though it might be worth disabling IPv6 on container creation anyway.
+
+WireGuard keys seem to expire at PIA's end after several hours of inactivity. Setting the `KEEPALIVE` env var may be enough to prevent this from happening if needed.
 
 ## Notes
 * WireGuard config generation and port forwarding was based on what was found in the source code to the PIA desktop app. The standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) used by the container are available for use outside of Docker.
@@ -64,6 +68,7 @@ The container doesn't support IPv6. Any IPv6 traffic is dropped unless using `FI
 * If strict reverse path filtering is used, then the `net.ipv4.conf.all.src_valid_mark=1` sysctl should be set on container creation to prevent incoming packets being dropped. See [issue #96](https://github.com/thrnz/docker-wireguard-pia/issues/96) for more info.
 * The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun)) might be beneficial.
 * Container images are available on both Docker Hub (`thrnz/docker-wireguard-pia`) and GitHub's Container Registry (`ghcr.io/thrnz/docker-wireguard-pia`). Images are rebuilt monthly to keep Alpine packages up to date.
+* The container has no recovery logic if the remote VPN endpoint permanently stops responding. While regenerating keys and changing to a new endpoint without bringing down the WireGuard interface may be possible to script, doing so would be fiddly especially with other containers actively sharing the network. Recreating the container itself and any other containers sharing the connection is probably the simplest and safest way of recovering if this happens. The default healthcheck should be able to detect an unresponsive endpoint with `ACTIVE_HEALTHCHECKS=1` set.
 
 ## Credits
 Some bits and pieces and ideas have been borrowed from the following:

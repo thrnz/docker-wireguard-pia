@@ -11,10 +11,10 @@ services:
       - pia-shared:/pia-shared
     cap_add:
       - NET_ADMIN
-  #SYS_MODULE might not be needed with a 5.6+ kernel?
+      # SYS_MODULE might not be needed with a 5.6+ kernel?
       #- SYS_MODULE
-      # If the kernel module isn't available, mounting the tun device may be necessary for userspace implementations
-  #devices:
+    # If the kernel module isn't available, mounting the tun device may be necessary for userspace implementations
+    #devices:
       #- /dev/net/tun:/dev/net/tun
     environment:
       # The following env vars are required:
@@ -35,23 +35,13 @@ services:
       - net.ipv6.conf.default.disable_ipv6=1
       - net.ipv6.conf.all.disable_ipv6=1
       - net.ipv6.conf.lo.disable_ipv6=1
-      # The container has no recovery logic. Use a healthcheck to catch disconnects.
-      # This can also be used to ensure the vpn is up before starting other containers
-      # using the vpn connection
-    healthcheck:
-      test: ping -c 1 www.google.com || exit 1
-      interval: 300s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-      start_interval: 3s
 
-      # Example of another service sharing the VPN
-      # If this service needs LAN access then LOCAL_NETWORK must be set appropriatley on the vpn container
-      # Forwared ports should also be set on the vpn container if needed rather than this one in
-      # order to access from the LAN
-      # It may be preferable to use a reverse proxy connected via the docker bridge network instead
-      # to keep the vpn isolated from the LAN
+  # Example of another service sharing the VPN
+  # If this service needs LAN access then LOCAL_NETWORK must be set appropriately on the vpn container
+  # Forwarded ports should also be set on the vpn container if needed rather than this one in
+  # order to access from the LAN
+  # It may be preferable to use a reverse proxy connected via the docker bridge network instead
+  # to keep the vpn isolated from the LAN
   #other-service:
     #image: some-other-image
     # Other services can share the VPN using 'network_mode: "service:[service name]"'
