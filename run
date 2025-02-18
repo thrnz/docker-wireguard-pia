@@ -70,17 +70,19 @@ firewall_init () {
 
 # Alpine 3.19 changed the default iptables backend to iptables-nft
 # Check that the host supports this and revert to iptables-legacy if needed
+# Can force one or the other using NFTABLES=0/1 env var
 nftables_setup () {
   # Run an iptables command to see if things are working
-  iptables -L &> /dev/null && return
+  [ -z "$NFTABLES" ] && iptables -L &> /dev/null && return
+  [ "$NFTABLES" -eq 1 ] && return
   # If not, change to legacy
   echo "$(date): Falling back to iptables-legacy"
-  ln -sf /sbin/xtables-legacy-multi /sbin/iptables
-  ln -sf /sbin/xtables-legacy-multi /sbin/iptables-save
-  ln -sf /sbin/xtables-legacy-multi /sbin/iptables-restore
-  ln -sf /sbin/xtables-legacy-multi /sbin/ip6tables
-  ln -sf /sbin/xtables-legacy-multi /sbin/ip6tables-save
-  ln -sf /sbin/xtables-legacy-multi /sbin/ip6tables-restore
+  ln -sf $(type -p xtables-legacy-multi) $(type -p iptables)
+  ln -sf $(type -p xtables-legacy-multi) $(type -p iptables-save)
+  ln -sf $(type -p xtables-legacy-multi) $(type -p iptables-restore)
+  ln -sf $(type -p xtables-legacy-multi) $(type -p ip6tables)
+  ln -sf $(type -p xtables-legacy-multi) $(type -p ip6tables-save)
+  ln -sf $(type -p xtables-legacy-multi) $(type -p ip6tables-restore)
 }
 
 # Handle shutdown behavior
