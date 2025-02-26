@@ -154,6 +154,13 @@ get_auth_token () {
   chmod 600 "$tokenfile"
 }
 
+if [[ $(getpcaps 0) == "0: =ep" ]]; then
+  echo "$(date): The container appears to be running with elevated privileges. The container generally only requires the NET_ADMIN capability to run."
+elif ! getpcaps 0 | grep cap_net_admin >& /dev/null; then
+  echo "$(date): The container requires the NET_ADMIN capability to run. See the README for more info."
+  fatal_error
+fi
+
 nftables_setup
 
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"

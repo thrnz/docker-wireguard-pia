@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     grepcidr3 \
     iptables \
     iptables-legacy \
+    libcap-utils \
     jq \
     openssl \
     wireguard-tools
