@@ -110,6 +110,15 @@ parse_args() {
   done
 }
 
+curlcache () {
+  mkdir -p /tmp/curlcache
+  HASH=$(echo -n "$@" | sha256sum | awk '{print $1}')
+  if [ ! -f /tmp/curlcache/${HASH} ]; then
+    curl -o /tmp/curlcache/${HASH} $@
+  fi
+  cat /tmp/curlcache/${HASH}
+}
+
 # The PIA desktop app uses a public key to verify server list downloads.
 # https://github.com/pia-foss/desktop/blob/b701601bfa806621a41039514bbb507e250466ec/common/src/jsonrefresher.cpp#L93
 verify_serverlist ()
@@ -127,7 +136,7 @@ get_dip_serverinfo ()
   if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
     echo "$(date): Fetching dedicated ip server info via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
     # shellcheck disable=SC2086
-    dip_response=$(curl --silent --show-error $curl_params --location --request POST \
+    dip_response=$(curlcache --silent --show-error $curl_params --location --request POST \
     "https://$META_CN:$META_PORT/api/client/v2/dedicated_ip" \
     --header 'Content-Type: application/json' \
     --header "Authorization: Token $(cat "$tokenfile")" \
@@ -138,7 +147,7 @@ get_dip_serverinfo ()
   else
     echo "$(date): Fetching dedicated ip server info"
     # shellcheck disable=SC2086
-    dip_response=$(curl --silent --show-error $curl_params --location --request POST \
+    dip_response=$(curlcache --silent --show-error $curl_params --location --request POST \
     'https://www.privateinternetaccess.com/api/client/v2/dedicated_ip' \
     --header 'Content-Type: application/json' \
     --header "Authorization: Token $(cat "$tokenfile")" \
@@ -169,12 +178,12 @@ get_servers() {
   if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
     echo "Fetching next-gen PIA server list via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
     # shellcheck disable=SC2086
-    curl --silent --show-error $curl_params --cacert "$pia_cacert" --resolve "$META_CN:$META_PORT:$META_IP" \
+    curlcache --silent --show-error $curl_params --cacert "$pia_cacert" --resolve "$META_CN:$META_PORT:$META_IP" \
       "https://$META_CN:$META_PORT/vpninfo/servers/v6" > "$servers_raw"
   else
     echo "Fetching next-gen PIA server list"
     # shellcheck disable=SC2086
-    curl --silent --show-error $curl_params \
+    curlcache --silent --show-error $curl_params \
       "https://serverlist.piaservers.net/vpninfo/servers/v6" > "$servers_raw"
   fi
   head -n 1 "$servers_raw" | tr -d '\n' > "$servers_json"
@@ -209,31 +218,36 @@ get_wgconf () {
     echo "$(date) Fetching PIA ca cert"
     pia_cacert_tmp=$(mktemp)
     # shellcheck disable=SC2086
-    if ! curl --get --silent --show-error $curl_params --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
+    if ! curlcache --get --silent --show-error $curl_params --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
       echo "Failed to download PIA ca cert"
       fatal_error
     fi
     pia_cacert="$pia_cacert_tmp"
   fi
 
+  [[ "$FIREWALL" =~ ^[0-1]$ ]] || FIREWALL=1
   if [ -n "$PIA_DIP_TOKEN" ]; then
-    echo "Registering public key with PIA dedicated ip endpoint; cn: $wg_cn, ip: $wg_ip"
+    echo "Registering public key with PIA dedicated ip endpoint; cn: $wg_cn, ip: $wg_ip:$wg_port"
+    (( ${FIREWALL} == 1 )) && iptables -I OUTPUT -p tcp --dport $wg_port -d $wg_ip -j ACCEPT
     # shellcheck disable=SC2086
-    curl --get --silent --show-error $curl_params \
+    curlcache --get --silent --show-error $curl_params \
       --user "dedicated_ip_$PIA_DIP_TOKEN:$wg_ip" \
       --data-urlencode "pubkey=$client_public_key" \
       --cacert "$pia_cacert" \
       --resolve "$wg_cn:$wg_port:$wg_ip" \
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
+    (( ${FIREWALL} == 1 )) && iptables -D OUTPUT -p tcp --dport $wg_port -d $wg_ip -j ACCEPT
   else
-    echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
+    echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip:$wg_port"
+    (( ${FIREWALL} == 1 )) && iptables -I OUTPUT -p tcp --dport $wg_port -d $wg_ip -j ACCEPT
     # shellcheck disable=SC2086
-    curl --get --silent --show-error $curl_params \
+    curlcache --get --silent --show-error $curl_params \
       --data-urlencode "pubkey=$client_public_key" \
       --data-urlencode "pt=$(cat "$tokenfile")" \
       --cacert "$pia_cacert" \
       --resolve "$wg_cn:$wg_port:$wg_ip" \
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
+    (( ${FIREWALL} == 1 )) && iptables -D OUTPUT -p tcp --dport $wg_port -d $wg_ip -j ACCEPT
   fi
 
   [ "$(jq -r .status "$addkey_response")" == "ERROR" ] && [ "$(jq -r .message "$addkey_response")" == "Login failed!" ] && echo "Auth failed" && cat "$addkey_response" && fatal_error 2

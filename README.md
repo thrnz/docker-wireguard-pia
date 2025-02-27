@@ -25,6 +25,7 @@ The rest are optional:
 |-------|------|
 |```LOCAL_NETWORK=192.168.1.0/24```|Whether to route and allow input/output traffic to the LAN. LAN access will be unavailable if not specified. Multiple ranges can be specified, separated by a comma or space. Note that there may be DNS issues if this overlaps with PIA's default DNS servers (`10.0.0.243` and `10.0.0.242` as of July 2022). Custom DNS servers can be defined using `VPNDNS` (see below) if this is an issue.
 |```KEEPALIVE=25```|If defined, PersistentKeepalive will be set to this in the WireGuard config. This can be used to ensure incoming packets on an idle link aren't lost when behind NAT. The [WireGuard QuickStart guide](https://www.wireguard.com/quickstart/) suggests a value of 25 if needed. By default this remains unset.
+|```RECONNECT=0/1```|Whether to watch for disconnects and restart the tunnel if detected. Defaults to 0 if not specified.
 |```MTU=1420```|This can be used to override ```wg-quick```'s automatic MTU setting on the Wireguard interface if needed. By default this remains unset (ie. let ```wg-quick``` choose).
 |```VPNDNS=8.8.8.8, 8.8.4.4```|Use these DNS servers in the WireGuard config. PIA's DNS servers will be used if not specified. Use 0 to disable making any changes to the default container DNS settings. (Note: Using any DNS servers other than PIA's may lead to DNS queries being leaked outside the VPN connection.)
 |```PORT_FORWARDING=0/1```|Whether to enable port forwarding. Requires a supported server. Defaults to 0 if not specified.
@@ -69,7 +70,6 @@ WireGuard keys seem to expire at PIA's end after several hours of inactivity. Se
 * If strict reverse path filtering is used, then the `net.ipv4.conf.all.src_valid_mark=1` sysctl should be set on container creation to prevent incoming packets being dropped. See [issue #96](https://github.com/thrnz/docker-wireguard-pia/issues/96) for more info.
 * The userspace implementation through wireguard-go is very stable but lacks in performance. Looking into supporting ([boringtun](https://github.com/cloudflare/boringtun)) might be beneficial.
 * Container images are available on both Docker Hub (`thrnz/docker-wireguard-pia`) and GitHub's Container Registry (`ghcr.io/thrnz/docker-wireguard-pia`). Images are rebuilt monthly to keep Alpine packages up to date.
-* The container has no recovery logic if the remote VPN endpoint permanently stops responding. While regenerating keys and changing to a new endpoint without bringing down the WireGuard interface may be possible to script, doing so would be fiddly especially with other containers actively sharing the network. Recreating the container itself and any other containers sharing the connection is probably the simplest and safest way of recovering if this happens. The default healthcheck should be able to detect an unresponsive endpoint with `ACTIVE_HEALTHCHECKS=1` set.
 
 ## Credits
 Some bits and pieces and ideas have been borrowed from the following:

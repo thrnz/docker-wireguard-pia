@@ -6,6 +6,7 @@
 # Should be 0/1
 [[ "$EXIT_ON_FATAL" =~ ^[0-1]$ ]] || EXIT_ON_FATAL=0
 [[ "$FIREWALL" =~ ^[0-1]$ ]] || FIREWALL=1
+[[ "$RECONNECT" =~ ^[0-1]$ ]] || RECONNECT=0
 [[ "$PORT_FILE_CLEANUP" =~ ^[0-1]$ ]] || PORT_FILE_CLEANUP=0
 [[ "$PORT_FORWARDING" =~ ^[0-1]$ ]] || PORT_FORWARDING=0
 [[ "$PORT_PERSIST" =~ ^[0-1]$ ]] || PORT_PERSIST=0
@@ -119,6 +120,35 @@ now_sleep () {
   wait $!
 }
 
+# All done, check for issues and reconnect if there are
+now_watch () {
+  sleep 3
+  while [ true ]; do
+    ping -c1 1.1.1.1 >/dev/null 2>&1
+    if (( $? != 0 )); then
+      sleep 3
+      ping -c1 8.8.8.8 >/dev/null 2>&1
+      if (( $? != 0 )); then
+        sleep 3
+        ping -c1 9.9.9.9 >/dev/null 2>&1
+        if (( $? != 0 )); then
+          echo "============"
+          echo "Reconnecting"
+          echo "============"
+          wg-quick down wg0 >/dev/null 2>&1
+          sleep 10
+          rm -f $wg_conf
+          gen_configs
+          wg-quick up wg0
+          echo "Connected"
+          wg show
+        fi
+      fi
+    fi
+    sleep 60
+  done
+}
+
 # An error with no recovery logic occured. Either go to sleep or exit.
 fatal_error () {
   echo "$(date): Fatal error"
@@ -183,36 +213,39 @@ nftables_setup
 # Generate wg0.conf
 # LOC can be a single location id, or a space or comma separated list
 # Multiple location ids are used as fallback if the initial registration fails
-gen_success=0
-for location in ${LOC//,/ }; do
-  gen_wgconf "$location"
-  result=$?
-  if [ "$result" -eq 2 ]; then
-    # Reauth and retry if auth failed
-    # An auth error implies that the location id is valid and the endpoint responsive
-    rm "$tokenfile"
-    get_auth_token
-    gen_wgconf "$location" || fatal_error
-  elif [ "$result" -eq 3 ]; then
-    # Location not found
-    echo "$(date): Location $location not found"
-    continue
-  elif [ "$result" -eq 4 ]; then
-    # Registration failed
-    echo "$(date): Registration failed"
-    continue
-  elif [ "$result" -ne 0 ]; then
-    echo "$(date): Failed to generate WireGuard config"
+gen_configs() {
+  gen_success=0
+  for location in ${LOC//,/ }; do
+    gen_wgconf "$location"
+    result=$?
+    if [ "$result" -eq 2 ]; then
+      # Reauth and retry if auth failed
+      # An auth error implies that the location id is valid and the endpoint responsive
+      rm "$tokenfile"
+      get_auth_token
+      gen_wgconf "$location" || fatal_error
+    elif [ "$result" -eq 3 ]; then
+      # Location not found
+      echo "$(date): Location $location not found"
+      continue
+    elif [ "$result" -eq 4 ]; then
+      # Registration failed
+      echo "$(date): Registration failed"
+      continue
+    elif [ "$result" -ne 0 ]; then
+      echo "$(date): Failed to generate WireGuard config"
+      fatal_error
+    fi
+    gen_success=1
+    break
+  done
+
+  if [ "$gen_success" -eq 0 ]; then
+    echo "$(date): Failed to generate WireGuard config for the selected location/s: $LOC"
     fatal_error
   fi
-  gen_success=1
-  break
-done
-
-if [ "$gen_success" -eq 0 ]; then
-  echo "$(date): Failed to generate WireGuard config for the selected location/s: $LOC"
-  fatal_error
-fi
+}
+gen_configs
 
 # Add PersistentKeepalive if KEEPALIVE is set
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
@@ -329,4 +362,8 @@ if [ -n "$CYCLE_PORTS" ]; then
   done
 fi
 
-now_sleep
+if (( ${RECONNECT} == 1 )); then
+  now_watch
+else
+  now_sleep
+fi
