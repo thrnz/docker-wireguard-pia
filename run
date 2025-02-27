@@ -122,14 +122,14 @@ now_sleep () {
 
 # All done, check for issues and reconnect if there are
 now_watch () {
-  sleep 3
+  sleep 10
   while [ true ]; do
     ping -c1 1.1.1.1 >/dev/null 2>&1
     if (( $? != 0 )); then
-      sleep 3
+      sleep 10
       ping -c1 8.8.8.8 >/dev/null 2>&1
       if (( $? != 0 )); then
-        sleep 3
+        sleep 10
         ping -c1 9.9.9.9 >/dev/null 2>&1
         if (( $? != 0 )); then
           echo "============"
