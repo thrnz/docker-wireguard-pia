@@ -273,7 +273,7 @@ CONFF
 
 }
 
-curl_params="--retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
+curl_params="--compressed --retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
 
 port_forward_avail=0
 list_and_exit=0
