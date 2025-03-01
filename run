@@ -122,7 +122,7 @@ trap finish SIGTERM SIGINT SIGQUIT
 endpoint_monitor () {
   local failures=0
   while true; do
-    if ! ACTIVE_HEALTHCHECKS=1 /scripts/healthcheck.sh &> /dev/null; then
+    if ! ACTIVE_HEALTHCHECKS=1 PORT_FORWARDING=0 /scripts/healthcheck.sh &> /dev/null; then
       ((failures++))
     else
       failures=0
