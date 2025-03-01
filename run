@@ -65,21 +65,24 @@ firewall_init () {
 
 firewall_temp_add () {
   # Temporarily allow the following:
+  # Only include the owner module stuff if its available
+  iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
   # DNS queries
-  iptables -A OUTPUT -o $outgoing_iface -m owner --uid-owner root -p udp -d "$original_nameserver" -j ACCEPT
+  iptables -A OUTPUT -o $outgoing_iface $owner -p udp -d "$original_nameserver" -j ACCEPT
   # HTTPS to download the server list and access API for generating auth token
-  iptables -A OUTPUT -o $outgoing_iface -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT
+  iptables -A OUTPUT -o $outgoing_iface $owner -p tcp --dport 443 -j ACCEPT
   # API access to register the public WireGuard key
-  iptables -A OUTPUT -o $outgoing_iface -m owner --uid-owner root -p tcp --dport 1337 -j ACCEPT
+  iptables -A OUTPUT -o $outgoing_iface $owner -p tcp --dport 1337 -j ACCEPT
   # Non-default API port if set
-  [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i $outgoing_iface -m owner --uid-owner root -p tcp --dport "$META_PORT" -j ACCEPT
+  [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i $outgoing_iface $owner -p tcp --dport "$META_PORT" -j ACCEPT
 }
 
 firewall_temp_remove () {
-  iptables -D OUTPUT -o $outgoing_iface -m owner --uid-owner root -p udp -d "$original_nameserver" -j ACCEPT
-  iptables -D OUTPUT -o $outgoing_iface -m owner --uid-owner root -p tcp --dport 443 -j ACCEPT
-  iptables -D OUTPUT -o $outgoing_iface -m owner --uid-owner root -p tcp --dport 1337 -j ACCEPT
-  [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o $outgoing_iface -m owner --uid-owner root -p tcp --dport "$META_PORT" -j ACCEPT
+  iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
+  iptables -D OUTPUT -o $outgoing_iface $owner -p udp -d "$original_nameserver" -j ACCEPT
+  iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport 443 -j ACCEPT
+  iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport 1337 -j ACCEPT
+  [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport "$META_PORT" -j ACCEPT
 }
 
 # Alpine 3.19 changed the default iptables backend to iptables-nft
