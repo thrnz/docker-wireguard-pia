@@ -173,7 +173,9 @@ now_sleep () {
 
       wg set wg0 private-key <(echo "$new_privkey") || fatal_error
       wg set wg0 peer "$new_peerpubkey" endpoint "$new_endpoint" allowed-ips "0.0.0.0/0" || fatal_error
-      [ $KEEPALIVE -gt 0 ] && wg set wg0 peer "$new_peerpubkey" persistent-keepalive "$KEEPALIVE" || fatal_error
+      if [ $KEEPALIVE -gt 0 ]; then
+        wg set wg0 peer "$new_peerpubkey" persistent-keepalive "$KEEPALIVE" || fatal_error
+      fi
       wg set wg0 peer "$old_peerpubkey" remove || fatal_error
       # Adding the new address first before removing the old one seems to be needed
       ip -4 address add $new_ip dev wg0 || fatal_error
