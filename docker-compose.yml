@@ -23,6 +23,7 @@ services:
       - PASS=xxxxxxxxxxxxxxxx
       #The rest are optional:
       #- LOCAL_NETWORK=192.168.1.0/24
+      #- RECONNECT=1
       #- KEEPALIVE=25
       #- VPNDNS=8.8.8.8,8.8.4.4
       #- PORT_FORWARDING=1
