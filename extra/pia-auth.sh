@@ -69,14 +69,14 @@ usage() {
 get_auth_token () {
   if [ -n "$meta_port" ] && [ -n "$meta_ip" ] && [ -n "$meta_cn" ] && [ -n "$cacert" ]; then
     # https://github.com/pia-foss/desktop/blob/master/daemon/src/metaserviceapibase.h
-    token_response=$(curl --silent --location --show-error --request POST --max-time "$curl_max_time" \
+    token_response=$(curl $CURL_OVERRIDE_PARAMS --silent --location --show-error --request POST --max-time "$curl_max_time" \
         --resolve "$meta_cn:$meta_port:$meta_ip" \
         --data-urlencode "username=$user" \
         --data-urlencode "password=$pass" \
         --cacert "$cacert" \
         "https://$meta_cn:$meta_port/api/client/v2/token")
   else
-    token_response=$(curl --silent --location --show-error --request POST --max-time "$curl_max_time" \
+    token_response=$(curl $CURL_OVERRIDE_PARAMS --silent --location --show-error --request POST --max-time "$curl_max_time" \
         'https://www.privateinternetaccess.com/api/client/v2/token' \
         --data-urlencode "username=$user" \
         --data-urlencode "password=$pass")

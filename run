@@ -207,8 +207,6 @@ run_command () {
 }
 
 gen_wgconf () {
-  # Set both interface and dns servers to use so we can run this again bypassing the tunnel if needed once connected
-  CURL_OVERRIDE_PARAMS="--interface $outgoing_iface --dns-interface $outgoing_iface --dns-servers $original_nameserver" \
   /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
   return $?
 }
@@ -241,9 +239,10 @@ nftables_setup
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
 
-# Remember the original nameserver in case we want to regenerate wg0.conf later on
+# Explicitly set both interface and dns servers to use so we can run setup requests again bypassing the tunnel if needed once connected
 original_nameserver=$(cat /etc/resolv.conf|grep -im 1 '^nameserver' |cut -d ' ' -f2)
 outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
+export CURL_OVERRIDE_PARAMS="--interface $outgoing_iface --dns-interface $outgoing_iface --dns-servers $original_nameserver"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
