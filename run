@@ -65,24 +65,26 @@ firewall_init () {
 
 firewall_temp_add () {
   # Temporarily allow the following:
-  # Only include the owner module stuff if its available
+  # Only include the following when available
   iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
+  iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
-  iptables -A OUTPUT -o $outgoing_iface $owner -p udp -d "$original_nameserver" -j ACCEPT
+  iptables -A OUTPUT -o $outgoing_iface $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
   # HTTPS to download the server list and access API for generating auth token
-  iptables -A OUTPUT -o $outgoing_iface $owner -p tcp --dport 443 -j ACCEPT
+  iptables -A OUTPUT -o $outgoing_iface $owner -p tcp --dport 443 $multiport -j ACCEPT
   # API access to register the public WireGuard key
-  iptables -A OUTPUT -o $outgoing_iface $owner -p tcp --dport 1337 -j ACCEPT
+  iptables -A OUTPUT -o $outgoing_iface $owner -p tcp --dport 1337 $multiport -j ACCEPT
   # Non-default API port if set
-  [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i $outgoing_iface $owner -p tcp --dport "$META_PORT" -j ACCEPT
+  [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i $outgoing_iface $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
 }
 
 firewall_temp_remove () {
   iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
-  iptables -D OUTPUT -o $outgoing_iface $owner -p udp -d "$original_nameserver" -j ACCEPT
-  iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport 443 -j ACCEPT
-  iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport 1337 -j ACCEPT
-  [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport "$META_PORT" -j ACCEPT
+  iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables -D OUTPUT -o $outgoing_iface $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
+  iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport 443 $multiport -j ACCEPT
+  iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport 1337 $multiport -j ACCEPT
+  [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o $outgoing_iface $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
 }
 
 # Alpine 3.19 changed the default iptables backend to iptables-nft
@@ -245,9 +247,15 @@ nftables_setup
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
 
 # Explicitly set both interface and dns servers to use so we can run setup requests again bypassing the tunnel if needed once connected
+# Setting the local port also allows more specific temporary firewall rules
+# Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
+# Setting --interface to an address rather than a name seems to be needed for --local-port to work
 original_nameserver=$(cat /etc/resolv.conf|grep -im 1 '^nameserver' |cut -d ' ' -f2)
 outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
-export CURL_OVERRIDE_PARAMS="--interface $outgoing_iface --dns-interface $outgoing_iface --dns-servers $original_nameserver"
+outgoing_addr=$(ip -4 -o addr show eth0 | awk '{print $4}' | cut -d "/" -f 1)
+curl_local_port_min=12300
+curl_local_port_max=12400
+export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
@@ -301,6 +309,8 @@ gen_configs() {
 
 gen_configs
 
+[ $FIREWALL -eq 1 ] && firewall_temp_remove
+
 # Add PersistentKeepalive if KEEPALIVE is set
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
@@ -327,9 +337,6 @@ effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
 if [ "$FIREWALL" -eq 1 ]; then
-  # Remove temporary rules
-  firewall_temp_remove
-
   # Allow docker network input/output
   for iface in /sys/class/net/*; do
     iface="${iface##*/}"
