@@ -48,6 +48,10 @@ while getopts ":u:p:i:c:o:n:" args; do
     n)
       meta_cn="$OPTARG"
       ;;
+    *)
+      echo "Unknown option"
+      exit 1
+      ;;
   esac
 done
 
