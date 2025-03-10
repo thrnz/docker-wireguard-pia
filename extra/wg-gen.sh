@@ -102,6 +102,10 @@ parse_args() {
       a)
         list_and_exit=1
         ;;
+      *)
+        echo "Unknown option"
+        exit 1
+        ;;
     esac
   done
 }
@@ -122,20 +126,22 @@ get_dip_serverinfo ()
 {
   if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
     echo "$(date): Fetching dedicated ip server info via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
+    # shellcheck disable=SC2086
     dip_response=$(curl --silent --show-error $curl_params --location --request POST \
     "https://$META_CN:$META_PORT/api/client/v2/dedicated_ip" \
     --header 'Content-Type: application/json' \
-    --header "Authorization: Token $(cat $tokenfile)" \
+    --header "Authorization: Token $(cat "$tokenfile")" \
     --cacert "$pia_cacert" --resolve "$META_CN:$META_PORT:$META_IP" \
     --data-raw '{
       "tokens":["'"$PIA_DIP_TOKEN"'"]
     }')
   else
     echo "$(date): Fetching dedicated ip server info"
+    # shellcheck disable=SC2086
     dip_response=$(curl --silent --show-error $curl_params --location --request POST \
     'https://www.privateinternetaccess.com/api/client/v2/dedicated_ip' \
     --header 'Content-Type: application/json' \
-    --header "Authorization: Token $(cat $tokenfile)" \
+    --header "Authorization: Token $(cat "$tokenfile")" \
     --data-raw '{
       "tokens":["'"$PIA_DIP_TOKEN"'"]
     }')
@@ -162,10 +168,12 @@ get_dip_serverinfo ()
 get_servers() {
   if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
     echo "Fetching next-gen PIA server list via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
+    # shellcheck disable=SC2086
     curl --silent --show-error $curl_params --cacert "$pia_cacert" --resolve "$META_CN:$META_PORT:$META_IP" \
       "https://$META_CN:$META_PORT/vpninfo/servers/v6" > "$servers_raw"
   else
     echo "Fetching next-gen PIA server list"
+    # shellcheck disable=SC2086
     curl --silent --show-error $curl_params \
       "https://serverlist.piaservers.net/vpninfo/servers/v6" > "$servers_raw"
   fi
@@ -176,17 +184,17 @@ get_servers() {
   [ "$list_and_exit" -eq 1 ] && echo "Available location ids:" && jq '.regions | .[] | {name, id, port_forward}' "$servers_json" && cleanup && exit 0
 
   # Some locations have multiple servers available. Pick a random one.
-  totalservers=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | length' "$servers_json")
+  totalservers=$(jq -r '.regions | .[] | select(.id=="'"$location"'") | .servers.wg | length' "$servers_json")
   if ! [[ "$totalservers" =~ ^[0-9]+$ ]] || [ "$totalservers" -eq 0 ] 2>/dev/null; then
     echo "Location \"$location\" not found. Run with -a to list valid servers."
     fatal_error 3
   fi
   serverindex=$(( RANDOM % totalservers))
-  wg_cn=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].cn' "$servers_json")
-  wg_ip=$(jq -r '.regions | .[] | select(.id=="'$location'") | .servers.wg | .['$serverindex'].ip' "$servers_json")
+  wg_cn=$(jq -r '.regions | .[] | select(.id=="'"$location"'") | .servers.wg | .['$serverindex'].cn' "$servers_json")
+  wg_ip=$(jq -r '.regions | .[] | select(.id=="'"$location"'") | .servers.wg | .['$serverindex'].ip' "$servers_json")
   wg_port=$(jq -r '.groups.wg | .[0] | .ports | .[0]' "$servers_json")
 
-  [ $(jq -r '.regions | .[] | select(.id=="'$location'") | .port_forward' "$servers_json") == "true" ] && port_forward_avail=1
+  [ "$(jq -r '.regions | .[] | select(.id=="'"$location"'") | .port_forward' "$servers_json")" == "true" ] && port_forward_avail=1
 }
 
 get_wgconf () {
@@ -200,6 +208,7 @@ get_wgconf () {
   if [ -z "$pia_cacert" ]; then
     echo "$(date) Fetching PIA ca cert"
     pia_cacert_tmp=$(mktemp)
+    # shellcheck disable=SC2086
     if ! curl --get --silent --show-error $curl_params --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
       echo "Failed to download PIA ca cert"
       fatal_error
@@ -209,6 +218,7 @@ get_wgconf () {
 
   if [ -n "$PIA_DIP_TOKEN" ]; then
     echo "Registering public key with PIA dedicated ip endpoint; cn: $wg_cn, ip: $wg_ip"
+    # shellcheck disable=SC2086
     curl --get --silent --show-error $curl_params \
       --user "dedicated_ip_$PIA_DIP_TOKEN:$wg_ip" \
       --data-urlencode "pubkey=$client_public_key" \
@@ -217,9 +227,10 @@ get_wgconf () {
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
   else
     echo "Registering public key with PIA endpoint; id: $location, cn: $wg_cn, ip: $wg_ip"
+    # shellcheck disable=SC2086
     curl --get --silent --show-error $curl_params \
       --data-urlencode "pubkey=$client_public_key" \
-      --data-urlencode "pt=$(cat $tokenfile)" \
+      --data-urlencode "pt=$(cat "$tokenfile")" \
       --cacert "$pia_cacert" \
       --resolve "$wg_cn:$wg_port:$wg_ip" \
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"

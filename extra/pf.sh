@@ -109,12 +109,18 @@ while getopts ":t:i:n:c:p:f:s:r:" args; do
     r)
       persist_file=$OPTARG
       ;;
+    *)
+      echo "Unknown option"
+      exit 1
+      ;;
   esac
 done
 
 bind_port () {
   # Store transient errors here. Only display on fail.
-  local stderr_tmp=$(mktemp)
+  local stderr_tmp
+  stderr_tmp=$(mktemp)
+  # shellcheck disable=SC2086
   pf_bind=$(curl --get --silent --show-error $iface_curl --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       --data-urlencode "payload=$pf_payload" \
@@ -140,6 +146,7 @@ get_sig () {
     echo "$(date): Reusing previous PF token"
     pf_getsig=$(cat "$persist_file")
   else
+    # shellcheck disable=SC2086
     pf_getsig=$(curl --get --silent --show-error $iface_curl --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       --data-urlencode "token=$(cat "$tokenfile")" \
@@ -190,6 +197,7 @@ fi
 # Ideally we'd have been provided a cn, in case we 'guess' the wrong IP.
 # Must be a better way to do this.
 if [ -z "$api_ip" ]; then
+  # shellcheck disable=SC2086
   api_ip=$(traceroute -4 -m 1 $iface_tr privateinternetaccess.com | tail -n 1 | awk '{print $2}')
   # Very basic sanity check - make sure it matches 10.x.x.1
   if ! grep -q '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' <<< "$api_ip"; then
@@ -201,7 +209,8 @@ fi
 
 # If we haven't been passed a cn, then use the cn the server is claiming
 if [ -z "$vpn_cn" ]; then
-  possible_cn=$(curl $iface_curl --insecure --verbose --head https://$api_ip:19999 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
+  # shellcheck disable=SC2086
+  possible_cn=$(curl $iface_curl --insecure --verbose --head "https://$api_ip:19999" 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
   # Sanity check - match 'lowercase123'
   if grep -q '[a-z]*[0-9]\{3\}' <<< "$possible_cn"; then
     echo "$(date): Using $possible_cn as cn"
@@ -216,6 +225,7 @@ if [ -n "$vpn_cn" ]; then
     echo "$(date): Getting PIA ca cert"
     cacert=$(mktemp)
     cacert_istemp=1
+    # shellcheck disable=SC2086
     if ! curl $iface_curl --get --silent --max-time "$curl_max_time" --output "$cacert" --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
       "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
@@ -270,8 +280,8 @@ while true; do
   fi
   # Rebind at a specific time instead of simply sleeping in case the system itself goes to sleep
   # This prevents a delayed rebind after waking up
-  nextbind=$(( $(date +%s) + $pf_bindinterval ))
-  while [[ $(date +%s) < $nextbind ]]; do
+  nextbind=$(( $(date +%s) + pf_bindinterval ))
+  while [[ $(date +%s) -lt $nextbind ]]; do
     sleep 5 &
     wait $!
   done

@@ -77,12 +77,12 @@ nftables_setup () {
   [ "$NFTABLES" -eq 1 ] && return
   # If not, change to legacy
   echo "$(date): Using legacy iptables backend"
-  ln -sf xtables-legacy-multi $(type -p iptables)
-  ln -sf xtables-legacy-multi $(type -p iptables-save)
-  ln -sf xtables-legacy-multi $(type -p iptables-restore)
-  ln -sf xtables-legacy-multi $(type -p ip6tables)
-  ln -sf xtables-legacy-multi $(type -p ip6tables-save)
-  ln -sf xtables-legacy-multi $(type -p ip6tables-restore)
+  ln -sf xtables-legacy-multi "$(type -p iptables)"
+  ln -sf xtables-legacy-multi "$(type -p iptables-save)"
+  ln -sf xtables-legacy-multi "$(type -p iptables-restore)"
+  ln -sf xtables-legacy-multi "$(type -p ip6tables)"
+  ln -sf xtables-legacy-multi "$(type -p ip6tables-save)"
+  ln -sf xtables-legacy-multi "$(type -p ip6tables-restore)"
   if ! iptables -L &> /dev/null; then
     echo "$(date): Error reverting to legacy iptables backend"
     fatal_error
@@ -93,10 +93,10 @@ nftables_setup () {
 finish () {
   [ -x "$pre_down_script" ] && run_command "$pre_down_script"
   [ -n "$PRE_DOWN" ] && run_command "$PRE_DOWN"
-  [ $PORT_FORWARDING -eq 1 ] && pkill -f 'pf.sh'
+  [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
   echo "$(date): Shutting down WireGuard"
   # Remove forwarded port number dump file if requested
-  [ $PORT_FILE_CLEANUP -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
+  [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
   wg-quick down wg0
   [ -x "$post_down_script" ] && run_command "$post_down_script"
   [ -n "$POST_DOWN" ] && run_command "$POST_DOWN"
@@ -107,8 +107,8 @@ trap finish SIGTERM SIGINT SIGQUIT
 
 # All done. Sleep and wait for termination.
 now_sleep () {
-  if [ $PORT_FORWARDING -eq 1 ] && [ $PORT_FATAL -eq 1 ]; then
-    wait $pf_pid
+  if [ "$PORT_FORWARDING" -eq 1 ] && [ "$PORT_FATAL" -eq 1 ]; then
+    wait "$pf_pid"
     if [ $? -ne 0 ];then
       echo "$(date): Port forwarding script failed"
       fatal_error
@@ -123,7 +123,7 @@ now_sleep () {
 fatal_error () {
   echo "$(date): Fatal error"
   [ -n "$FATAL_SCRIPT" ] && run_command "$FATAL_SCRIPT"
-  [ $EXIT_ON_FATAL -eq 1 ] && exit 1
+  [ "$EXIT_ON_FATAL" -eq 1 ] && exit 1
   sleep infinity &
   wait $!
 }
@@ -166,10 +166,10 @@ nftables_setup
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
 
-[ $FIREWALL -eq 1 ] && firewall_init
+[ "$FIREWALL" -eq 1 ] && firewall_init
 
 # Remove previous forwarded port number dump file if requested and present
-[ $PORT_FILE_CLEANUP -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
+[ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
 
 # LOC is ignored and may be blank if ip/cn/port override vars or a dedicated ip are used
 [ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ] && LOC="manual"
@@ -215,7 +215,7 @@ if [ "$gen_success" -eq 0 ]; then
 fi
 
 # Add PersistentKeepalive if KEEPALIVE is set
-[ $KEEPALIVE -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
+[ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
 # Bring up Wireguard interface
 echo "$(date): Bringing up WireGuard interface wg0"
@@ -236,9 +236,10 @@ effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
 
 # Add qdisc to wg0 if requested
 # eg: QDISC=cake bandwidth 20Mbit
+# shellcheck disable=SC2086
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
-if [ $FIREWALL -eq 1 ]; then
+if [ "$FIREWALL" -eq 1 ]; then
   # Remove temporary rules
   iptables -D OUTPUT -p udp --dport 53 -j ACCEPT
   iptables -D OUTPUT -p tcp --dport 443 -j ACCEPT
@@ -276,7 +277,7 @@ if [ -n "$LOCAL_NETWORK" ]; then
         echo "$(date): Warning: LOCAL_NETWORK range $range overlaps with PIA's default dns servers ($pia_dns)" && \
         echo "$(date): Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
     fi
-    if [ $FIREWALL -eq 1 ]; then
+    if [ "$FIREWALL" -eq 1 ]; then
       echo "$(date): Allowing network access to $range on $iface"
       iptables -A OUTPUT -o "$iface" --destination "$range" -j ACCEPT
       iptables -A INPUT -i "$iface" --source "$range" -j ACCEPT
@@ -298,16 +299,16 @@ fi
 # Setup port forwarding if requested and available
 pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
 pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
-if [ $PORT_FORWARDING -eq 1 ] && [ -n "$pf_api_ip" ]; then
+if [ "$PORT_FORWARDING" -eq 1 ] && [ -n "$pf_api_ip" ]; then
   echo "$(date): Starting port forward script"
   # Try to use a persistent port if requested
-  if [ $PORT_PERSIST -eq 1 ]; then
+  if [ "$PORT_PERSIST" -eq 1 ]; then
     /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 &
   else
     /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
   fi
   pf_pid=$!
-elif [ $PORT_FORWARDING -eq 1 ] && [ -z "$pf_api_ip" ]; then
+elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
   echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
 fi
 
