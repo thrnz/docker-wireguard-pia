@@ -213,6 +213,8 @@ now_sleep () {
 
       [ "$PORT_FORWARDING" = "1" ] && pf_start
       now_sleep
+    elif [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -eq 0 ]; then
+      unset endpoint_monitor_pid
     fi
   done
 
