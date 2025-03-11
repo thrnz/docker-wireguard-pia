@@ -174,9 +174,20 @@ now_sleep () {
 
       echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
       [ -n "$PRE_RECONNECT" ] && run_command "$PRE_RECONNECT"
+
+      # Temporarily allow the following to bypass the tunnel
+      # This appears to be needed when curl binds to $outgoing_addr instead of $outgoing_iface, which seems to be needed for --local-port to work
+      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+      [ "$META_PORT" -ne 443 ] && ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
       [ "$FIREWALL" = "1" ] && firewall_temp_add
+
       gen_configs
+
       [ "$FIREWALL" = "1" ] && firewall_temp_remove
+      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+      [ "$META_PORT" -ne 443 ] && ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
 
       local new_privkey new_endpoint new_peerpubkey new_ip old_peerpubkey old_ip
       new_privkey=$(grep 'PrivateKey = ' "$wg_conf" | sed 's/PrivateKey = \(.*\)/\1/')
@@ -264,7 +275,7 @@ original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
 outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
 outgoing_addr=$(ip -4 -o addr show eth0 | awk '{print $4}' | cut -d "/" -f 1)
 curl_local_port_min=12300
-curl_local_port_max=12400
+curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
