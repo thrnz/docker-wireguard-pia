@@ -275,7 +275,7 @@ nftables_setup
 # Setting --interface to an address rather than a name seems to be needed for --local-port to work
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
 outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
-outgoing_addr=$(ip -4 -o addr show eth0 | awk '{print $4}' | cut -d "/" -f 1)
+outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
 curl_local_port_min=12300
 curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
