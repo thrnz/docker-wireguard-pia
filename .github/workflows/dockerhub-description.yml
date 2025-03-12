@@ -1,4 +1,4 @@
-name: ci
+name: Update DockerHub description
 
 on:
   push:
