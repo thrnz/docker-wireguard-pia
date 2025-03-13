@@ -256,13 +256,7 @@ get_wgconf () {
       echo "Using custom DNS servers: $dns"
   fi
 
-  # Store the info needed for port forwarding as comments in the generated config for later use if needed
-  if [ "$port_forward_avail" -eq 1 ]; then
-    echo "#cn: $wg_cn" > "$wg_out"
-    echo "#pf api ip: $pfapi_ip" >> "$wg_out"
-  fi
-
-  cat <<CONFF >> "$wg_out"
+  cat <<CONFF > "$wg_out"
 [Interface]
 PrivateKey = $client_private_key
 Address = $peer_ip
@@ -282,9 +276,15 @@ AllowedIPs = 0.0.0.0/0
 Endpoint = $wg_ip:$server_port
 CONFF
 
+  # Store the info needed for port forwarding as comments in the generated config for later use if needed
+  if [ "$port_forward_avail" -eq 1 ]; then
+    echo "#cn: $wg_cn" >> "$wg_out"
+    echo "#pf api ip: $pfapi_ip" >> "$wg_out"
+  fi
+
 }
 
-curl_params="--retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
+curl_params="$CURL_OVERRIDE_PARAMS --compressed --retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
 
 port_forward_avail=0
 list_and_exit=0

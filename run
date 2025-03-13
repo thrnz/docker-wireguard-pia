@@ -13,6 +13,9 @@
 # Should be a positive integer
 [[ "$KEEPALIVE" =~ ^[0-9]+$ ]] || KEEPALIVE=0
 [[ "$META_PORT" =~ ^[0-9]+$ ]] || export META_PORT=443
+[[ "$MONITOR_INTERVAL" =~ ^[0-9]+$ ]] || export MONITOR_INTERVAL=60
+[[ "$MONITOR_RETRIES" =~ ^[0-9]+$ ]] || export MONITOR_RETRIES=3
+
 # Maybe also check the following. They are all blank by default.
 # LOCAL_NETWORK=
 # PIA_CN=
@@ -57,15 +60,39 @@ firewall_init () {
   iptables -A INPUT -i lo -j ACCEPT
   iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-  # We also need to temporarily allow the following:
+  firewall_temp_add
+}
+
+firewall_temp_add () {
+  # Temporarily allow the following:
+  # Only include the following when available
+  iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
+  iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
-  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+  # shellcheck disable=SC2086
+  iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
   # HTTPS to download the server list and access API for generating auth token
-  iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+  # shellcheck disable=SC2086
+  iptables -A OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 443 $multiport -j ACCEPT
   # API access to register the public WireGuard key
-  iptables -A OUTPUT -p tcp --dport 1337 -j ACCEPT
+  # shellcheck disable=SC2086
+  iptables -A OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 1337 $multiport -j ACCEPT
   # Non-default API port if set
-  [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -p tcp --dport "$META_PORT" -j ACCEPT
+  # shellcheck disable=SC2086
+  [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+}
+
+firewall_temp_remove () {
+  iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
+  iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  # shellcheck disable=SC2086
+  iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
+  # shellcheck disable=SC2086
+  iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 443 $multiport -j ACCEPT
+  # shellcheck disable=SC2086
+  iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 1337 $multiport -j ACCEPT
+  # shellcheck disable=SC2086
+  [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
 }
 
 # Alpine 3.19 changed the default iptables backend to iptables-nft
@@ -105,16 +132,92 @@ finish () {
 
 trap finish SIGTERM SIGINT SIGQUIT
 
+endpoint_monitor () {
+  local failures=0
+  while true; do
+    if ! ACTIVE_HEALTHCHECKS=1 PORT_FORWARDING=0 /scripts/healthcheck.sh &> /dev/null; then
+      ((failures++))
+    else
+      failures=0
+    fi
+    [ "$failures" -ge "$MONITOR_RETRIES" ] && return 1
+    sleep "$MONITOR_INTERVAL"
+  done
+}
+
 # All done. Sleep and wait for termination.
 now_sleep () {
-  if [ "$PORT_FORWARDING" -eq 1 ] && [ "$PORT_FATAL" -eq 1 ]; then
-    wait "$pf_pid"
-    if [ $? -ne 0 ];then
-      echo "$(date): Port forwarding script failed"
-      fatal_error
-    fi
-    echo "$(date): Port forwarding script closed"
+  # If we need to, keep an eye on the port forwarding script and also monitor for unresponsive endpoint
+  if [ "$RECONNECT" = "1" ]; then
+    endpoint_monitor &
+    local endpoint_monitor_pid="$!"
+    echo "$(date): Started endpoint monitor"
   fi
+
+  while [ -n "$pf_pid$endpoint_monitor_pid" ]; do
+    # shellcheck disable=SC2086
+    wait -n $endpoint_monitor_pid $pf_pid
+    local result=$?
+    # Check which pid terminated
+    if [ -n "$pf_pid" ] && ! kill -0 "$pf_pid" 2> /dev/null; then
+      if [ "$PORT_FORWARDING" = "1" ] && [ "$PORT_FATAL" = "1" ] && [ $result -ne 0 ];then
+        echo "$(date): Port forwarding script failed"
+        [ -n "$endpoint_monitor_pid" ] && kill "$endpoint_monitor_pid"
+        fatal_error
+      fi
+      echo "$(date): Port forwarding script closed"
+      unset pf_pid
+    fi
+    if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
+      [ -n "$pf_pid" ] && kill "$pf_pid" 2> /dev/null
+      unset pf_pid
+
+      echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
+      [ -n "$PRE_RECONNECT" ] && run_command "$PRE_RECONNECT"
+
+      # Temporarily allow the following to bypass the tunnel
+      # This appears to be needed when curl binds to $outgoing_addr instead of $outgoing_iface, which seems to be needed for --local-port to work
+      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+      [ "$META_PORT" -ne 443 ] && ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+      [ "$FIREWALL" = "1" ] && firewall_temp_add
+
+      gen_configs
+
+      [ "$FIREWALL" = "1" ] && firewall_temp_remove
+      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+      [ "$META_PORT" -ne 443 ] && ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+
+      local new_privkey new_endpoint new_peerpubkey new_ip old_peerpubkey old_ip
+      new_privkey=$(grep 'PrivateKey = ' "$wg_conf" | sed 's/PrivateKey = \(.*\)/\1/')
+      new_endpoint=$(grep 'Endpoint = ' "$wg_conf" | sed 's/Endpoint = \(.*\)/\1/')
+      new_peerpubkey=$(grep 'PublicKey = ' "$wg_conf" | sed 's/PublicKey = \(.*\)/\1/')
+      new_ip=$(grep 'Address = ' "$wg_conf" | sed 's/Address = \(.*\)/\1/')
+      old_peerpubkey=$(wg show wg0 |grep 'peer: ' | sed 's/peer: \(.*\)/\1/')
+      old_ip=$(ip -o addr show dev wg0 | awk '$3 == "inet" {print $4}')
+
+      wg set wg0 private-key <(echo "$new_privkey") || fatal_error
+      wg set wg0 peer "$new_peerpubkey" endpoint "$new_endpoint" allowed-ips "0.0.0.0/0" || fatal_error
+      if [ "$KEEPALIVE" -gt 0 ]; then
+        wg set wg0 peer "$new_peerpubkey" persistent-keepalive "$KEEPALIVE" || fatal_error
+      fi
+      wg set wg0 peer "$old_peerpubkey" remove || fatal_error
+      # Adding the new address first before removing the old one seems to be needed
+      ip -4 address add "$new_ip" dev wg0 || fatal_error
+      ip -4 address del "$old_ip" dev wg0 || fatal_error
+      echo "$(date): Updated WireGuard endpoint"
+      echo; wg show wg0; echo
+
+      [ -n "$POST_RECONNECT" ] && run_command "$POST_RECONNECT"
+
+      [ "$PORT_FORWARDING" = "1" ] && pf_start
+      now_sleep
+    elif [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -eq 0 ]; then
+      unset endpoint_monitor_pid
+    fi
+  done
+
   sleep infinity &
   wait $!
 }
@@ -166,6 +269,17 @@ nftables_setup
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
 
+# Explicitly set both interface and dns servers to use so we can run setup requests again bypassing the tunnel if needed once connected
+# Setting the local port also allows more specific temporary firewall rules
+# Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
+# Setting --interface to an address rather than a name seems to be needed for --local-port to work
+original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
+outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
+outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
+curl_local_port_min=12300
+curl_local_port_max=12310
+export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
+
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
 # Remove previous forwarded port number dump file if requested and present
@@ -183,36 +297,42 @@ nftables_setup
 # Generate wg0.conf
 # LOC can be a single location id, or a space or comma separated list
 # Multiple location ids are used as fallback if the initial registration fails
-gen_success=0
-for location in ${LOC//,/ }; do
-  gen_wgconf "$location"
-  result=$?
-  if [ "$result" -eq 2 ]; then
-    # Reauth and retry if auth failed
-    # An auth error implies that the location id is valid and the endpoint responsive
-    rm "$tokenfile"
-    get_auth_token
-    gen_wgconf "$location" || fatal_error
-  elif [ "$result" -eq 3 ]; then
-    # Location not found
-    echo "$(date): Location $location not found"
-    continue
-  elif [ "$result" -eq 4 ]; then
-    # Registration failed
-    echo "$(date): Registration failed"
-    continue
-  elif [ "$result" -ne 0 ]; then
-    echo "$(date): Failed to generate WireGuard config"
+gen_configs() {
+  gen_success=0
+  for location in ${LOC//,/ }; do
+    gen_wgconf "$location"
+    local result=$?
+    if [ "$result" -eq 2 ]; then
+      # Reauth and retry if auth failed
+      # An auth error implies that the location id is valid and the endpoint responsive
+      rm "$tokenfile"
+      get_auth_token
+      gen_wgconf "$location" || fatal_error
+    elif [ "$result" -eq 3 ]; then
+      # Location not found
+      echo "$(date): Location $location not found"
+      continue
+    elif [ "$result" -eq 4 ]; then
+      # Registration failed
+      echo "$(date): Registration failed"
+      continue
+    elif [ "$result" -ne 0 ]; then
+      echo "$(date): Failed to generate WireGuard config"
+      fatal_error
+    fi
+    gen_success=1
+    break
+  done
+
+  if [ "$gen_success" -eq 0 ]; then
+    echo "$(date): Failed to generate WireGuard config for the selected location/s: $LOC"
     fatal_error
   fi
-  gen_success=1
-  break
-done
+}
 
-if [ "$gen_success" -eq 0 ]; then
-  echo "$(date): Failed to generate WireGuard config for the selected location/s: $LOC"
-  fatal_error
-fi
+gen_configs
+
+[ "$FIREWALL" -eq 1 ] && firewall_temp_remove
 
 # Add PersistentKeepalive if KEEPALIVE is set
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
@@ -240,12 +360,6 @@ effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
 if [ "$FIREWALL" -eq 1 ]; then
-  # Remove temporary rules
-  iptables -D OUTPUT -p udp --dport 53 -j ACCEPT
-  iptables -D OUTPUT -p tcp --dport 443 -j ACCEPT
-  iptables -D OUTPUT -p tcp --dport 1337 -j ACCEPT
-  [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -p tcp --dport "$META_PORT" -j ACCEPT
-
   # Allow docker network input/output
   for iface in /sys/class/net/*; do
     iface="${iface##*/}"
@@ -268,7 +382,6 @@ fi
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
 # Accept comma separated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
-  iface=$(ip route show default | awk '/default/ {print $5}')
   gaddr=$(ip route show default | awk '/default/ {print $3}')
   [ -z "$VPNDNS" ] && pia_dns=$(grep 'DNS = ' "$wg_conf" | sed 's/DNS = \(.*\)/\1/')
   for range in ${LOCAL_NETWORK//,/ }; do
@@ -278,9 +391,9 @@ if [ -n "$LOCAL_NETWORK" ]; then
         echo "$(date): Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
     fi
     if [ "$FIREWALL" -eq 1 ]; then
-      echo "$(date): Allowing network access to $range on $iface"
-      iptables -A OUTPUT -o "$iface" --destination "$range" -j ACCEPT
-      iptables -A INPUT -i "$iface" --source "$range" -j ACCEPT
+      echo "$(date): Allowing network access to $range on $outgoing_iface"
+      iptables -A OUTPUT -o "$outgoing_iface" --destination "$range" -j ACCEPT
+      iptables -A INPUT -i "$outgoing_iface" --source "$range" -j ACCEPT
     fi
     echo "$(date): Adding route to $range"
     ip route add "$range" via "$gaddr"
@@ -297,20 +410,25 @@ if [ -n "$FWD_IFACE" ]; then
 fi
 
 # Setup port forwarding if requested and available
-pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
-pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
-if [ "$PORT_FORWARDING" -eq 1 ] && [ -n "$pf_api_ip" ]; then
-  echo "$(date): Starting port forward script"
-  # Try to use a persistent port if requested
-  if [ "$PORT_PERSIST" -eq 1 ]; then
-    /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 &
-  else
-    /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
+pf_start () {
+  [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
+  pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
+  pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
+  if [ "$PORT_FORWARDING" -eq 1 ] && [ -n "$pf_api_ip" ]; then
+    echo "$(date): Starting port forward script"
+    # Try to use a persistent port if requested
+    if [ "$PORT_PERSIST" -eq 1 ]; then
+      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 &
+    else
+      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
+    fi
+    pf_pid=$!
+  elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
+    echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
   fi
-  pf_pid=$!
-elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
-  echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
-fi
+}
+
+[ "$PORT_FORWARDING" -eq 1 ] && pf_start
 
 [ -x "$post_up_script" ] && run_command "$post_up_script"
 [ -n "$POST_UP" ] && run_command "$POST_UP"
