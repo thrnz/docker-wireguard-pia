@@ -69,13 +69,20 @@ firewall_temp_add () {
   iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
   iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
-  # shellcheck disable=SC2086
-  iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
-  for extserver in $original_extservers; do
-    [[ "$extserver" =~ "host" ]] && continue
+  if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
-    iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$extserver" -j ACCEPT
-  done
+    iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
+    for extserver in $original_extservers; do
+      [[ "$extserver" =~ "host" ]] && continue
+      # shellcheck disable=SC2086
+      iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$extserver" -j ACCEPT
+    done
+  else
+    # This is for compatibility with older versions of Docker in case custom container
+    # dns servers are set as we don't know what they're set to
+    # shellcheck disable=SC2086
+    iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -j ACCEPT
+  fi
   # HTTPS to download the server list and access API for generating auth token
   # shellcheck disable=SC2086
   iptables -A OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 443 $multiport -j ACCEPT
@@ -90,13 +97,18 @@ firewall_temp_add () {
 firewall_temp_remove () {
   iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
   iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
-  # shellcheck disable=SC2086
-  iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
-  for extserver in $original_extservers; do
-    [[ "$extserver" =~ "host" ]] && continue
+  if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
-    iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$extserver" -j ACCEPT
-  done
+    iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
+    for extserver in $original_extservers; do
+      [[ "$extserver" =~ "host" ]] && continue
+      # shellcheck disable=SC2086
+      iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$extserver" -j ACCEPT
+    done
+  else
+    # shellcheck disable=SC2086
+    iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -j ACCEPT
+  fi
   # shellcheck disable=SC2086
   iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 443 $multiport -j ACCEPT
   # shellcheck disable=SC2086
@@ -283,7 +295,7 @@ nftables_setup
 # Setting the local port also allows more specific temporary firewall rules
 # Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
 # Setting --interface to an address rather than a name seems to be needed for --local-port to work
-# ExtServers contains dns servers used by docker's internal resolver
+# ExtServers contains dns servers used by docker's internal resolver, however this is only available from Docker v26.0
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
 original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
 outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
