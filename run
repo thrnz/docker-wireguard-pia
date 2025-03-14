@@ -63,11 +63,20 @@ firewall_init () {
   firewall_temp_add
 }
 
+# This can be used to test that a particular pattern matching module is available
+# A bit blunt, but other methods such as using 'iptables-restore --test' seem to pass in some cases
+# when the command itself will fail.
+iptables_test () {
+  iptables -A OUTPUT "$@" &> /dev/null || return 1
+  iptables -D OUTPUT "$@"
+  return 0
+}
+
 firewall_temp_add () {
   # Temporarily allow the following:
   # Only include the following when available
-  iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
-  iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables_test -p udp -m owner --uid-owner root -j ACCEPT && local owner="-m owner --uid-owner root"
+  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j ACCEPT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
@@ -95,8 +104,8 @@ firewall_temp_add () {
 }
 
 firewall_temp_remove () {
-  iptables -m owner --help &> /dev/null && local owner="-m owner --uid-owner root"
-  iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables_test -p udp -m owner --uid-owner root -j ACCEPT && local owner="-m owner --uid-owner root"
+  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j ACCEPT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
     iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
@@ -123,7 +132,7 @@ firewall_temp_remove () {
 nftables_setup () {
   # Run an iptables command to see if things are working
   [ -z "$NFTABLES" ] && iptables -L &> /dev/null && return
-  [ "$NFTABLES" -eq 1 ] && return
+  [ "$NFTABLES" = "1" ] && return
   # If not, change to legacy
   echo "$(date): Using legacy iptables backend"
   ln -sf xtables-legacy-multi "$(type -p iptables)"
