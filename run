@@ -71,6 +71,11 @@ firewall_temp_add () {
   # DNS queries
   # shellcheck disable=SC2086
   iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
+  for extserver in $original_extservers; do
+    [[ "$extserver" =~ "host" ]] && continue
+    # shellcheck disable=SC2086
+    iptables -A OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$extserver" -j ACCEPT
+  done
   # HTTPS to download the server list and access API for generating auth token
   # shellcheck disable=SC2086
   iptables -A OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 443 $multiport -j ACCEPT
@@ -87,6 +92,11 @@ firewall_temp_remove () {
   iptables -m multiport --help &> /dev/null && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # shellcheck disable=SC2086
   iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
+  for extserver in $original_extservers; do
+    [[ "$extserver" =~ "host" ]] && continue
+    # shellcheck disable=SC2086
+    iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$extserver" -j ACCEPT
+  done
   # shellcheck disable=SC2086
   iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 443 $multiport -j ACCEPT
   # shellcheck disable=SC2086
@@ -273,12 +283,15 @@ nftables_setup
 # Setting the local port also allows more specific temporary firewall rules
 # Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
 # Setting --interface to an address rather than a name seems to be needed for --local-port to work
+# ExtServers contains dns servers used by docker's internal resolver
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
+original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
 outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
 outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
 curl_local_port_min=12300
 curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
+echo "$(date): curl options: $CURL_OVERRIDE_PARAMS"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
