@@ -63,6 +63,8 @@ jobs:
           platforms: linux/amd64,linux/arm,linux/arm64
           push: ${{ github.repository_owner == 'thrnz' }}
           tags: ${{ steps.docker-meta.outputs.tags }}
+          build-args: |
+            BUILDINFO="${{ github.ref_name }} ${{ github.sha }}"
           labels: ${{ steps.docker-meta.outputs.labels }}
       -
         name: Image digest

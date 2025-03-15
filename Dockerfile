@@ -1,5 +1,8 @@
 FROM alpine:latest
 
+ARG BUILDINFO=manual
+ENV BUILDINFO=${BUILDINFO}
+
 RUN apk add --no-cache \
     bash \
     ca-certificates \
