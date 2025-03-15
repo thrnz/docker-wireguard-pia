@@ -75,8 +75,8 @@ iptables_test () {
 firewall_temp_add () {
   # Temporarily allow the following:
   # Only include the following when available
-  iptables_test -p udp -m owner --uid-owner root -j ACCEPT && local owner="-m owner --uid-owner root"
-  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j ACCEPT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
@@ -104,8 +104,8 @@ firewall_temp_add () {
 }
 
 firewall_temp_remove () {
-  iptables_test -p udp -m owner --uid-owner root -j ACCEPT && local owner="-m owner --uid-owner root"
-  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j ACCEPT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
     iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
@@ -200,7 +200,7 @@ now_sleep () {
       unset pf_pid
     fi
     if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
-      [ -n "$pf_pid" ] && kill "$pf_pid" 2> /dev/null
+      [ -n "$pf_pid" ] && kill "$pf_pid"
       unset pf_pid
 
       echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
