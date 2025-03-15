@@ -43,4 +43,7 @@ VOLUME /pia-shared
 HEALTHCHECK --interval=1m --timeout=3s --start-period=30s --start-interval=1s --retries=3 \
     CMD /scripts/healthcheck.sh || exit 1
 
+ARG BUILDINFO=manual
+ENV BUILDINFO=${BUILDINFO}
+
 CMD ["/scripts/run"]

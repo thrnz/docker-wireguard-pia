@@ -298,6 +298,8 @@ elif ! getpcaps 0 | grep cap_net_admin >& /dev/null; then
   fatal_error
 fi
 
+echo "$(date): Container build info: $BUILDINFO"
+
 nftables_setup
 
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
