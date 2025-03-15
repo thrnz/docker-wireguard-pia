@@ -75,8 +75,8 @@ iptables_test () {
 firewall_temp_add () {
   # Temporarily allow the following:
   # Only include the following when available
-  iptables_test -p udp -m owner --uid-owner root -j ACCEPT && local owner="-m owner --uid-owner root"
-  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j ACCEPT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p tcp -m multiport --sports "$curl_local_port_min":"$curl_local_port_max" -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
@@ -101,11 +101,12 @@ firewall_temp_add () {
   # Non-default API port if set
   # shellcheck disable=SC2086
   [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+  firewall_temp_state=1
 }
 
 firewall_temp_remove () {
-  iptables_test -p udp -m owner --uid-owner root -j ACCEPT && local owner="-m owner --uid-owner root"
-  iptables_test -p tcp -m multiport --sports $curl_local_port_min:$curl_local_port_max -j ACCEPT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p tcp -m multiport --sports "$curl_local_port_min":"$curl_local_port_max" -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
     iptables -D OUTPUT -o "$outgoing_iface" $owner -p udp --dport 53 -d "$original_nameserver" -j ACCEPT
@@ -124,6 +125,7 @@ firewall_temp_remove () {
   iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 1337 $multiport -j ACCEPT
   # shellcheck disable=SC2086
   [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+  unset firewall_temp_state
 }
 
 # Alpine 3.19 changed the default iptables backend to iptables-nft
@@ -200,7 +202,7 @@ now_sleep () {
       unset pf_pid
     fi
     if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
-      [ -n "$pf_pid" ] && kill "$pf_pid" 2> /dev/null
+      [ -n "$pf_pid" ] && kill "$pf_pid"
       unset pf_pid
 
       echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
@@ -256,6 +258,7 @@ now_sleep () {
 # An error with no recovery logic occured. Either go to sleep or exit.
 fatal_error () {
   echo "$(date): Fatal error"
+  [ "$firewall_temp_state" = "1" ] && firewall_temp_remove
   [ -n "$FATAL_SCRIPT" ] && run_command "$FATAL_SCRIPT"
   [ "$EXIT_ON_FATAL" -eq 1 ] && exit 1
   sleep infinity &
@@ -408,7 +411,7 @@ if [ "$FIREWALL" -eq 1 ]; then
 
   # Allow WG stuff
   iptables -A OUTPUT -o wg0 -j ACCEPT
-  iptables -I OUTPUT -m mark --mark "$(wg show wg0 fwmark)" -j ACCEPT
+  iptables -A OUTPUT -m mark --mark "$(wg show wg0 fwmark)" -j ACCEPT
 
   echo "$(date): Firewall enabled: Blocking non-WireGuard traffic"
 fi
