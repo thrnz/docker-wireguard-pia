@@ -46,7 +46,7 @@ The rest are optional:
 |`HEALTHCHECK_PING_TARGET`|When active healthchecks are enabled or reconnect logic is used, this can be used to override the target/s that gets pinged when testing that the endpoint is still responding. Defaults to `www.privateinternetaccess.com`. Can be set to space or comma separated list of multiple targets, in which case all need to fail for the endpoint to be considered unresponsive.
 |`HEALTHCHECK_PING_TIMEOUT`|Can be used to override the number of seconds to wait for a reply when pinging a target. Defaults to 3.
 `NFTABLES=0/1`|Alpine uses the `nf_tables` iptables backend by default. The container should automatically fall back to the legacy backend if needed. Set this to `0` to force the use of the legacy backend, or to `1` to force the use of the `nf_tables` backend if desired.
-`RECONNECT=0/1`|The container can optionally attempt to detect and recover from an unresponsive endpoint. This is done without the WireGuard interface being brought down. `HEALTHCHECK_PING_TARGET` can be used to set the target used to detect if the remote endpoint is responding. Defaults to 0 if not specified.
+`RECONNECT=0/1`|The container can optionally attempt to detect and recover from an unresponsive endpoint. This is done without the WireGuard interface being brought down. `HEALTHCHECK_PING_TARGET` can be used to set the target used to detect if the remote endpoint is responding. Defaults to 0 if not specified. See [below](#networking) for more info.
 `MONITOR_INTERVAL=60` `MONITOR_RETRIES=3`|These are used by the `RECONNECT` logic, and can be used to tweak the probe frequency and the number of retries made before considering an endpoint unresponsive.
 
 ## Scripting
@@ -55,7 +55,7 @@ Custom commands and/or scripts can be run at certain stages of the container's l
 In addition, scripts mounted in `/pia/scripts` named `pre-up.sh`, `post-up.sh`, `pre-down.sh` and `post-down.sh` will be run at the appropriate stage if present. See [issue #33](https://github.com/thrnz/docker-wireguard-pia/issues/33) for more info.
 
 ## Networking
-To keep things simple, network setup is mostly handled by `wg-quick`. All traffic is routed down the WireGuard tunnel, with exceptions added for any ranges manually defined by `LOCAL_NETWORK`. Note that `LOCAL_NETWORK` must be set correctly if LAN access is needed.
+To keep things simple, network setup is mostly handled by `wg-quick`. All traffic is routed down the WireGuard tunnel, with exceptions added for any ranges manually defined by `LOCAL_NETWORK`. Note that `LOCAL_NETWORK` must be set correctly if LAN access is needed. More information on `wg-quick`'s routing is available [here](https://www.wireguard.com/netns/) under the 'Improved Rule-based Routing' heading.
 
 Firewall rules are added dropping all traffic by default, and only encrypted/tunneled traffic, attached Docker network traffic, and `LOCAL_NETWORK` traffic is explicitly allowed. This can be disabled by setting the `FIREWALL=0` env var if desired.
 
@@ -65,7 +65,7 @@ The container doesn't support IPv6. Any IPv6 traffic is dropped unless using `FI
 
 WireGuard keys seem to expire at PIA's end after several hours of inactivity. Setting the `KEEPALIVE` env var may be enough to prevent this from happening if needed.
 
-The container has optional recovery logic if the remote endpoint permanently stops responding. If an unresponsive endpoint is detected, an attempt is made to generate a new WireGuard config and, if successful, is applied to the interface without needing to bring it down. The port forwarding script is then restarted if needed.
+The container has optional recovery logic if the remote endpoint permanently stops responding. In order to register new WireGuard keys, temporary routes and firewall rules are added to allow some requests to bypass the tunnel. To prevent potential leaks while this happens, these requests are limited to a certain interface, ports, and root UID. If successful, new WireGuard settings are then applied without needing to bring the existing interface down. Apart from a change in address (and possibly forwarded port number if used) the process should be mostly transparent to other containers sharing the connection. The recovery logic is disabled by default, and is enabled by setting the `RECONNECT=1` env var.
 
 ## Notes
 * WireGuard config generation and port forwarding was based on what was found in the source code to the PIA desktop app. The standalone [Bash scripts](https://github.com/thrnz/docker-wireguard-pia/tree/master/extra) used by the container are available for use outside of Docker.
