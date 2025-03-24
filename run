@@ -202,8 +202,16 @@ now_sleep () {
       unset pf_pid
     fi
     if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
-      [ -n "$pf_pid" ] && kill "$pf_pid"
-      unset pf_pid
+      if [ "$PORT_FORWARDING" = "1" ]; then
+        [ -n "$pf_pid" ] && kill "$pf_pid"
+        unset pf_pid
+        local prevport
+        [ -r "$portfile" ] && prevport=$(cat "$portfile")
+        if [ "$FIREWALL" = "1" ] && [ -n "$prevport" ]; then
+          iptables -D INPUT -p tcp -i wg0 --dport "$prevport" -j ACCEPT
+          iptables -D INPUT -p udp -i wg0 --dport "$prevport" -j ACCEPT
+        fi
+      fi
 
       echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
       [ -n "$PRE_RECONNECT" ] && run_command "$PRE_RECONNECT"
