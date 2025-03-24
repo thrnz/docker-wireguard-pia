@@ -320,7 +320,7 @@ nftables_setup
 # ExtServers contains dns servers used by docker's internal resolver, however this is only available from Docker v26.0
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
 original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
-outgoing_iface=$(ip route show default | awk '/default/ {print $5}')
+outgoing_iface=$(ip -4 route show default | awk '/default/ {print $5}' | head -1)
 outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
 curl_local_port_min=12300
 curl_local_port_max=12310
@@ -429,7 +429,7 @@ fi
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
 # Accept comma separated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
-  gaddr=$(ip route show default | awk '/default/ {print $3}')
+  gaddr=$(ip -4 route show default | awk '/default/ {print $3}' | head -1)
   [ -z "$VPNDNS" ] && pia_dns=$(grep 'DNS = ' "$wg_conf" | sed 's/DNS = \(.*\)/\1/')
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ -n "$pia_dns" ]; then
