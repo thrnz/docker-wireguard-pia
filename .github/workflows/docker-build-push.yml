@@ -55,9 +55,11 @@ jobs:
             type=ref,event=branch,enable=${{ github.ref_name != 'master' }}
             # set latest tag for default branch
             type=raw,value=latest,enable=${{ github.ref_name == 'master' }}
+            type=raw,value={{date 'YYYYMMDD'}}_{{branch}}_{{sha}}
       - name: Note build time
         run: |
           echo "BUILD_DATE=$(date)" >> ${GITHUB_ENV}
+          echo "SHA_TRIMMED=${GITHUB_SHA::7}" >> ${GITHUB_ENV}
       -
         name: Build and push
         id: docker_build
@@ -67,7 +69,7 @@ jobs:
           push: ${{ github.repository_owner == 'thrnz' }}
           tags: ${{ steps.docker-meta.outputs.tags }}
           build-args: |
-            BUILDINFO="${{ github.ref_name }} ${{ github.sha }} ${{ env.BUILD_DATE }}"
+            BUILDINFO="${{ github.ref_name }} ${{ env.SHA_TRIMMED }} ${{ env.BUILD_DATE }}"
           labels: ${{ steps.docker-meta.outputs.labels }}
       -
         name: Image digest
