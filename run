@@ -331,7 +331,7 @@ nftables_setup
 # Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
 # Setting --interface to an address rather than a name seems to be needed for --local-port to work
 # ExtServers contains dns servers used by docker's internal resolver, however this is only available from Docker v26.0
-original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -d ' ' -f2)
+original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -F2)
 original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
 outgoing_iface=$(ip -4 route show default | awk '/default/ {print $5}' | head -1)
 outgoing_iface_dns=$(get_outgoing_iface "$original_nameserver")
