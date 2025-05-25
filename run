@@ -443,7 +443,6 @@ fi
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
 # Accept comma separated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
-  gaddr=$(ip -4 route show default | awk '/default/ {print $3}' | head -1)
   [ -z "$VPNDNS" ] && pia_dns=$(grep 'DNS = ' "$wg_conf" | sed 's/DNS = \(.*\)/\1/')
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ -n "$pia_dns" ]; then
@@ -457,7 +456,7 @@ if [ -n "$LOCAL_NETWORK" ]; then
       iptables -A INPUT -i "$outgoing_iface" --source "$range" -j ACCEPT
     fi
     echo "$(date): Adding route to $range"
-    ip route add "$range" via "$gaddr"
+    ip -4 rule add to "$range" lookup main pref 10
   done
 fi
 
