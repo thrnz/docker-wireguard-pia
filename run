@@ -75,7 +75,7 @@ iptables_test () {
 firewall_temp_add () {
   # Temporarily allow the following:
   # Only include the following when available
-  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner $UID"
   iptables_test -p tcp -m multiport --sports "$curl_local_port_min":"$curl_local_port_max" -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
   if [ -n "$original_extservers" ]; then
@@ -105,7 +105,7 @@ firewall_temp_add () {
 }
 
 firewall_temp_remove () {
-  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner $UID"
   iptables_test -p tcp -m multiport --sports "$curl_local_port_min":"$curl_local_port_max" -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
@@ -166,6 +166,8 @@ finish () {
 trap finish SIGTERM SIGINT SIGQUIT
 
 endpoint_monitor () {
+  # To force an unresponsive endpoint for testing:
+  # wg set wg0 listen-port 1234 peer $(wg show | grep peer | cut -F2) endpoint 127.0.0.1:1234
   local failures=0
   while true; do
     if ! ACTIVE_HEALTHCHECKS=1 PORT_FORWARDING=0 /scripts/healthcheck.sh &> /dev/null; then
@@ -176,6 +178,30 @@ endpoint_monitor () {
     [ "$failures" -ge "$MONITOR_RETRIES" ] && return 1
     sleep "$MONITOR_INTERVAL"
   done
+}
+
+reconnect_rule_add () {
+  ip -4 rule add oif "$outgoing_iface_dns" to "$original_nameserver" dport 53 uidrange "$UID-$UID" lookup main pref 20
+  ip -4 rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+  ip -4 rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+  [ "$META_PORT" -ne 443 ] && ip -4 rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+  for extserver in $original_extservers; do
+    [[ "$extserver" =~ "host" ]] && continue
+    ip -4 rule add to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
+  done
+  reconnect_rule_state=1
+}
+
+reconnect_rule_remove () {
+  for extserver in $original_extservers; do
+    [[ "$extserver" =~ "host" ]] && continue
+    ip -4 rule del to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
+  done
+  ip -4 rule del oif "$outgoing_iface_dns" to "$original_nameserver" dport 53 uidrange "$UID-$UID" lookup main pref 20
+  ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+  ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+  [ "$META_PORT" -ne 443 ] && ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+  unset reconnect_rule_state
 }
 
 # All done. Sleep and wait for termination.
@@ -202,6 +228,7 @@ now_sleep () {
       unset pf_pid
     fi
     if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
+      echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
       if [ "$PORT_FORWARDING" = "1" ]; then
         [ -n "$pf_pid" ] && kill "$pf_pid"
         unset pf_pid
@@ -213,30 +240,15 @@ now_sleep () {
         fi
       fi
 
-      echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
       [ -n "$PRE_RECONNECT" ] && run_command "$PRE_RECONNECT"
 
-      # Temporarily allow the following to bypass the tunnel
-      # This appears to be needed when curl binds to $outgoing_addr instead of $outgoing_iface, which seems to be needed for --local-port to work
-      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
-      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
-      [ "$META_PORT" -ne 443 ] && ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
-      for extserver in $original_extservers; do
-        [[ "$extserver" =~ "host" ]] && continue
-        ip rule add to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
-      done
+      reconnect_rule_add
       [ "$FIREWALL" = "1" ] && firewall_temp_add
 
       gen_configs
 
       [ "$FIREWALL" = "1" ] && firewall_temp_remove
-      for extserver in $original_extservers; do
-        [[ "$extserver" =~ "host" ]] && continue
-        ip rule del to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
-      done
-      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
-      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
-      [ "$META_PORT" -ne 443 ] && ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+      reconnect_rule_remove
 
       local new_privkey new_endpoint new_peerpubkey new_ip old_peerpubkey old_ip
       new_privkey=$(grep 'PrivateKey = ' "$wg_conf" | sed 's/PrivateKey = \(.*\)/\1/')
@@ -244,7 +256,7 @@ now_sleep () {
       new_peerpubkey=$(grep 'PublicKey = ' "$wg_conf" | sed 's/PublicKey = \(.*\)/\1/')
       new_ip=$(grep 'Address = ' "$wg_conf" | sed 's/Address = \(.*\)/\1/')
       old_peerpubkey=$(wg show wg0 |grep 'peer: ' | sed 's/peer: \(.*\)/\1/')
-      old_ip=$(ip -o addr show dev wg0 | awk '$3 == "inet" {print $4}')
+      old_ip=$(ip -4 -o addr show dev wg0 | awk '$3 == "inet" {print $4}')
 
       wg set wg0 private-key <(echo "$new_privkey") || fatal_error
       wg set wg0 peer "$new_peerpubkey" endpoint "$new_endpoint" allowed-ips "0.0.0.0/0" || fatal_error
@@ -275,6 +287,7 @@ now_sleep () {
 fatal_error () {
   echo "$(date): Fatal error"
   [ "$firewall_temp_state" = "1" ] && firewall_temp_remove
+  [ "$reconnect_rule_state" = "1" ] && reconnect_rule_remove
   [ -n "$FATAL_SCRIPT" ] && run_command "$FATAL_SCRIPT"
   [ "$EXIT_ON_FATAL" -eq 1 ] && exit 1
   sleep infinity &
@@ -307,11 +320,6 @@ get_auth_token () {
   chmod 600 "$tokenfile"
 }
 
-get_outgoing_iface ()
-{
-  ip route get "$1" | head -1 | sed 's/.*dev \([^ ]*\) .*/\1/'
-}
-
 if [[ $(getpcaps 0) == "0: =ep" ]]; then
   echo "$(date): The container appears to be running with elevated privileges. The container generally only requires the NET_ADMIN capability to run."
 elif ! getpcaps 0 | grep cap_net_admin >& /dev/null; then
@@ -334,12 +342,13 @@ nftables_setup
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -F2)
 original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
 outgoing_iface=$(ip -4 route show default | awk '/default/ {print $5}' | head -1)
-outgoing_iface_dns=$(get_outgoing_iface "$original_nameserver")
+outgoing_iface_dns=$(ip -4 route get "$original_nameserver" | head -1 | sed 's/.*dev \([^ ]*\) .*/\1/')
 outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
 curl_local_port_min=12300
 curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface_dns --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
 echo "$(date): curl options: $CURL_OVERRIDE_PARAMS"
+echo "$(date): resolv.conf ExtServers: $original_extservers"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
@@ -425,7 +434,7 @@ if [ "$FIREWALL" -eq 1 ]; then
   for iface in /sys/class/net/*; do
     iface="${iface##*/}"
     [[ "$iface" = @(lo|wg0) ]] && continue
-    docker_network="$(ip -o addr show dev "$iface"|
+    docker_network="$(ip -4 -o addr show dev "$iface"|
             awk '$3 == "inet" {print $4}')"
     [ -z "$docker_network" ] &&  continue
     echo "$(date): Allowing network access to $docker_network on $iface"
