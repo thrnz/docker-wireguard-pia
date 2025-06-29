@@ -10,6 +10,7 @@ RUN apk add --no-cache \
     libcap-utils \
     jq \
     openssl \
+    sed \
     wireguard-go \
     wireguard-tools
 

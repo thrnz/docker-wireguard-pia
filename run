@@ -300,8 +300,9 @@ run_command () {
 }
 
 gen_wgconf () {
-  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
-  return $?
+  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt" \
+    | sed --unbuffered -e 's/^/[wg-gen] /'
+  return "${PIPESTATUS[0]}"
 }
 
 # Get a new auth token
@@ -487,9 +488,11 @@ pf_start () {
     echo "$(date): Starting port forward script"
     # Try to use a persistent port if requested
     if [ "$PORT_PERSIST" -eq 1 ]; then
-      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 &
+      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 \
+        | sed --unbuffered -e 's/^/[pf] /' &
     else
-      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
+      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 \
+        | sed --unbuffered -e 's/^/[pf] /' &
     fi
     pf_pid=$!
   elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
