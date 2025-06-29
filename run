@@ -28,7 +28,7 @@
 
 configdir="/pia"
 tokenfile="$configdir/.token"
-pf_persistfile="$configdir/portsig.json"
+[ "$PORT_PERSIST" = "1" ] && pf_persistfile="$configdir/portsig.json"
 
 # Run custom scripts at the appropriate time if present
 # We also run custom commands specified by the PRE_UP, POST_UP, PRE_DOWN, and POST_DOWN env vars at the same time
@@ -300,8 +300,9 @@ run_command () {
 }
 
 gen_wgconf () {
-  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
-  return $?
+  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt" \
+    | sed --unbuffered -e 's/^/[wg-gen] /'
+  return "${PIPESTATUS[0]}"
 }
 
 # Get a new auth token
@@ -485,12 +486,8 @@ pf_start () {
   pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
   if [ "$PORT_FORWARDING" -eq 1 ] && [ -n "$pf_api_ip" ]; then
     echo "$(date): Starting port forward script"
-    # Try to use a persistent port if requested
-    if [ "$PORT_PERSIST" -eq 1 ]; then
-      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 &
-    else
-      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
-    fi
+    /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 \
+      | sed --unbuffered -e 's/^/[pf] /' &
     pf_pid=$!
   elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
     echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
