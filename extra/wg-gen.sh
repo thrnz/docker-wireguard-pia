@@ -45,6 +45,7 @@
 # 2: Auth error
 # 3: Invalid server location
 # 4: Registration failed
+# 5: Error getting server info
 
 [ -n "$DEBUG" ] && set -o xtrace
 
@@ -118,7 +119,7 @@ verify_serverlist ()
     echo "Verified server list"
   else
     echo "Failed to verify server list"
-    fatal_error
+    fatal_error 5
   fi
 }
 
@@ -152,7 +153,7 @@ get_dip_serverinfo ()
   if [ "$(jq -r '.[0].status' <<< "$dip_response")" != "active" ]; then
     echo "$(date): Failed to fetch dedicated ip server info. Response:"
     echo "$dip_response"
-    fatal_error
+    fatal_error 5
   fi
 
   wg_port=1337
@@ -284,7 +285,7 @@ CONFF
 
 }
 
-curl_params="$CURL_OVERRIDE_PARAMS --compressed --retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
+curl_params="$CURL_OVERRIDE_PARAMS --compressed --retry ${CURL_RETRY:-5} --retry-delay ${CURL_RETRY_DELAY:-5} --max-time ${CURL_MAX_TIME:-120} --connect-timeout 15"
 
 port_forward_avail=0
 list_and_exit=0
