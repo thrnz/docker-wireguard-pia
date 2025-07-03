@@ -47,7 +47,7 @@ pia_cacrt="/rsa_4096.crt"
 wg_conf="/etc/wireguard/wg0.conf"
 
 firewall_init () {
-  # Block everything by default
+  # Drop everything by default
   ip6tables -P OUTPUT DROP &> /dev/null
   ip6tables -P INPUT DROP &> /dev/null
   ip6tables -P FORWARD DROP &> /dev/null
@@ -132,10 +132,8 @@ firewall_temp_remove () {
 # Check that the host supports this and revert to iptables-legacy if needed
 # Can force one or the other using NFTABLES=0/1 env var
 nftables_setup () {
-  # Run an iptables command to see if things are working
   [ -z "$NFTABLES" ] && iptables -L &> /dev/null && return
   [ "$NFTABLES" = "1" ] && return
-  # If not, change to legacy
   echo "$(date): Using legacy iptables backend"
   ln -sf xtables-legacy-multi "$(type -p iptables)"
   ln -sf xtables-legacy-multi "$(type -p iptables-save)"
@@ -149,13 +147,11 @@ nftables_setup () {
   fi
 }
 
-# Handle shutdown behavior
 finish () {
   [ -x "$pre_down_script" ] && run_command "$pre_down_script"
   [ -n "$PRE_DOWN" ] && run_command "$PRE_DOWN"
   [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
   echo "$(date): Shutting down WireGuard"
-  # Remove forwarded port number dump file if requested
   [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
   wg-quick down wg0
   [ -x "$post_down_script" ] && run_command "$post_down_script"
@@ -204,7 +200,6 @@ reconnect_rule_remove () {
   unset reconnect_rule_state
 }
 
-# All done. Sleep and wait for termination.
 now_sleep () {
   # If we need to, keep an eye on the port forwarding script and also monitor for unresponsive endpoint
   if [ "$RECONNECT" = "1" ]; then
@@ -284,7 +279,6 @@ now_sleep () {
   wait $!
 }
 
-# An error with no recovery logic occured. Either go to sleep or exit.
 fatal_error () {
   echo "$(date): Fatal error"
   [ "$firewall_temp_state" = "1" ] && firewall_temp_remove
@@ -306,7 +300,6 @@ gen_wgconf () {
   return "${PIPESTATUS[0]}"
 }
 
-# Get a new auth token
 # Unsure how long an auth token will remain valid
 get_auth_token () {
   [ -r "$USER_FILE" ] && echo "$(date): Reading username from $USER_FILE" && USER=$(<"$USER_FILE")
@@ -336,16 +329,18 @@ nftables_setup
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
 
-# Explicitly set both interface and dns servers to use so we can run setup requests again bypassing the tunnel if needed once connected
-# Setting the local port also allows more specific temporary firewall rules
-# Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
-# Setting --interface to an address rather than a name seems to be needed for --local-port to work
-# ExtServers contains dns servers used by docker's internal resolver, however this is only available from Docker v26.0
+# This is for the reconnection logic. If we explicitly set both interface and dns for curl requests, then we can add
+# temporary routes later on to repeat the untunneled setup requests if needed without bringing the WireGuard interface down.
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -F2)
-original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
 outgoing_iface=$(ip -4 route show default | awk '/default/ {print $5}' | head -1)
 outgoing_iface_dns=$(ip -4 route get "$original_nameserver" | head -1 | sed 's/.*dev \([^ ]*\) .*/\1/')
+# Setting --interface to an address rather than a name seems to be needed for --local-port to work
 outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
+# ExtServers is present in resolv.conf from Docker 26.0 and exposes the dns servers used by docker's internal
+# resolver when the container has custom dns settings.
+original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
+# Setting the local port also allows more specific temporary routes/firewall rules
+# Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
 curl_local_port_min=12300
 curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface_dns --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
@@ -354,7 +349,6 @@ echo "$(date): resolv.conf ExtServers: $original_extservers"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
-# Remove previous forwarded port number dump file if requested and present
 [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
 
 # LOC is ignored and may be blank if ip/cn/port override vars or a dedicated ip are used
@@ -407,14 +401,11 @@ gen_configs
 
 [ "$FIREWALL" -eq 1 ] && firewall_temp_remove
 
-# Add PersistentKeepalive if KEEPALIVE is set
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
-# Bring up Wireguard interface
 echo "$(date): Bringing up WireGuard interface wg0"
 wg-quick up wg0 || fatal_error
 
-# Print out wg interface info
 echo
 wg
 echo
@@ -433,6 +424,7 @@ effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
 if [ "$FIREWALL" -eq 1 ]; then
+  echo "$(date): Firewall enabled: Dropping untunnelled traffic by default"
   # Allow docker network input/output
   for iface in /sys/class/net/*; do
     iface="${iface##*/}"
@@ -440,7 +432,7 @@ if [ "$FIREWALL" -eq 1 ]; then
     docker_network="$(ip -4 -o addr show dev "$iface"|
             awk '$3 == "inet" {print $4}')"
     [ -z "$docker_network" ] &&  continue
-    echo "$(date): Allowing network access to $docker_network on $iface"
+    echo "$(date): Allowing untunnelled access to $docker_network via $iface"
     iptables -A OUTPUT -o "$iface" --destination "$docker_network" -j ACCEPT
     iptables -A INPUT -i "$iface" --source "$docker_network" -j ACCEPT
   done
@@ -449,7 +441,6 @@ if [ "$FIREWALL" -eq 1 ]; then
   iptables -A OUTPUT -o wg0 -j ACCEPT
   iptables -A OUTPUT -m mark --mark "$(wg show wg0 fwmark)" -j ACCEPT
 
-  echo "$(date): Firewall enabled: Blocking non-WireGuard traffic"
 fi
 
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
@@ -463,7 +454,7 @@ if [ -n "$LOCAL_NETWORK" ]; then
         echo "$(date): Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
     fi
     if [ "$FIREWALL" -eq 1 ]; then
-      echo "$(date): Allowing network access to $range on $outgoing_iface"
+      echo "$(date): Allowing untunnelled access to $range via $outgoing_iface"
       iptables -A OUTPUT -o "$outgoing_iface" --destination "$range" -j ACCEPT
       iptables -A INPUT -i "$outgoing_iface" --source "$range" -j ACCEPT
     fi
@@ -481,7 +472,6 @@ if [ -n "$FWD_IFACE" ]; then
   echo "$(date): Forwarding traffic from $FWD_IFACE to VPN"
 fi
 
-# Setup port forwarding if requested and available
 pf_start () {
   [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
   pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
@@ -505,6 +495,7 @@ pf_start () {
 # Set env var CYCLE_PORTS to a space-separated list of ports to cycle through
 # Eg: CYCLE_PORTS=50001 50002 50003
 # Optionally set CYCLE_INTERVAL to number of seconds to use each port for. Defaults to 180 (3mins)
+# Could probably remove this - might be better suited to a custom script if needed
 if [ -n "$CYCLE_PORTS" ]; then
   echo "$(date): Changing Wireguard's local port every ${CYCLE_INTERVAL:-180}s"
   while true; do

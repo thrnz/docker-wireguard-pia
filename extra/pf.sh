@@ -141,7 +141,6 @@ bind_port () {
 }
 
 get_sig () {
-  # Attempt to reuse our previous port if requested
   if [ -n "$persist_file" ] && [ -r "$persist_file" ]; then
     echo "$(date): Reusing previous PF token"
     pf_getsig=$(cat "$persist_file")
@@ -158,7 +157,6 @@ get_sig () {
     echo "$pf_getsig"
     fatal_error
   fi
-  # Save response for re-use if requested
   [ -n "$persist_file" ] && echo "$pf_getsig" > "$persist_file"
   pf_payload=$(jq -r .payload <<< "$pf_getsig")
   pf_getsignature=$(jq -r .signature <<< "$pf_getsig")
@@ -271,11 +269,9 @@ while true; do
     echo "$(date): Server accepted PF bind"
     echo "$(date): Forwarding on port $pf_port"
     echo "$(date): Rebind interval: $pf_bindinterval seconds"
-    # Dump port here if requested
     [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo "$pf_port" > "$portfile"
     echo "$(date): This script should remain running to keep the forwarded port alive"
     echo "$(date): Press Ctrl+C to exit"
-    # Run another script if requested
     [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port" &
   fi
   # Rebind at a specific time instead of simply sleeping in case the system itself goes to sleep
