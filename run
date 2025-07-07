@@ -101,6 +101,9 @@ firewall_temp_add () {
   # Non-default API port if set
   # shellcheck disable=SC2086
   [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+  # '-m owner' seems to still drop a few packets that should match
+  # Allowing output for connections already permitted seems enough to pick up anything that was missed
+  iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   firewall_temp_state=1
 }
 
@@ -125,6 +128,7 @@ firewall_temp_remove () {
   iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 1337 $multiport -j ACCEPT
   # shellcheck disable=SC2086
   [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+  iptables -D OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   unset firewall_temp_state
 }
 
