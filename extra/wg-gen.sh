@@ -244,6 +244,13 @@ get_wgconf () {
   server_public_key="$(jq -r .server_key "$addkey_response")"
   server_port="$(jq -r .server_port "$addkey_response")"
   pfapi_ip="$(jq -r .server_vip "$addkey_response")"
+  peer_pubkey=$(jq -r .peer_pubkey "$addkey_response")
+
+  if [ "$peer_pubkey" != "$client_public_key" ]; then
+    echo "Server returned an unexpected public key: $peer_pubkey"
+    echo "But our public key is: $client_public_key"
+    fatal_error
+  fi
 
   echo "Generating $wg_out"
 
