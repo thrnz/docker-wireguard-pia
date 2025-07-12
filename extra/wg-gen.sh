@@ -231,7 +231,7 @@ get_wgconf () {
     # shellcheck disable=SC2086
     curl --get --silent --show-error $curl_params \
       --data-urlencode "pubkey=$client_public_key" \
-      --data-urlencode "pt=$(cat "$tokenfile")" \
+      --data-urlencode "pt@$tokenfile" \
       --cacert "$pia_cacert" \
       --resolve "$wg_cn:$wg_port:$wg_ip" \
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"

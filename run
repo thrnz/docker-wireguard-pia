@@ -315,7 +315,7 @@ get_auth_token () {
   if ! token=$(/scripts/pia-auth.sh -u "$USER" -p "$PASS" -n "$META_CN" -i "$META_IP" -o "$META_PORT" -c "$pia_cacrt"); then
     echo "$(date): Failed to acquire new auth token" && fatal_error
   fi
-  echo "$token" > "$tokenfile"
+  echo -n "$token" > "$tokenfile"
   chmod 600 "$tokenfile"
 }
 
