@@ -28,7 +28,7 @@
 
 configdir="/pia"
 tokenfile="$configdir/.token"
-pf_persistfile="$configdir/portsig.json"
+[ "$PORT_PERSIST" = "1" ] && pf_persistfile="$configdir/portsig.json"
 
 # Run custom scripts at the appropriate time if present
 # We also run custom commands specified by the PRE_UP, POST_UP, PRE_DOWN, and POST_DOWN env vars at the same time
@@ -47,7 +47,7 @@ pia_cacrt="/rsa_4096.crt"
 wg_conf="/etc/wireguard/wg0.conf"
 
 firewall_init () {
-  # Block everything by default
+  # Drop everything by default
   ip6tables -P OUTPUT DROP &> /dev/null
   ip6tables -P INPUT DROP &> /dev/null
   ip6tables -P FORWARD DROP &> /dev/null
@@ -75,7 +75,7 @@ iptables_test () {
 firewall_temp_add () {
   # Temporarily allow the following:
   # Only include the following when available
-  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner $UID"
   iptables_test -p tcp -m multiport --sports "$curl_local_port_min":"$curl_local_port_max" -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   # DNS queries
   if [ -n "$original_extservers" ]; then
@@ -101,11 +101,14 @@ firewall_temp_add () {
   # Non-default API port if set
   # shellcheck disable=SC2086
   [ "$META_PORT" -ne 443 ] && iptables -A OUTPUT -i "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+  # '-m owner' seems to still drop a few packets that should match
+  # Allowing output for connections already permitted seems enough to pick up anything that was missed
+  iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   firewall_temp_state=1
 }
 
 firewall_temp_remove () {
-  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner root"
+  iptables_test -p udp -m owner --uid-owner root -j REJECT && local owner="-m owner --uid-owner $UID"
   iptables_test -p tcp -m multiport --sports "$curl_local_port_min":"$curl_local_port_max" -j REJECT && local multiport="-m multiport --sports $curl_local_port_min:$curl_local_port_max"
   if [ -n "$original_extservers" ]; then
     # shellcheck disable=SC2086
@@ -125,6 +128,7 @@ firewall_temp_remove () {
   iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport 1337 $multiport -j ACCEPT
   # shellcheck disable=SC2086
   [ "$META_PORT" -ne 443 ] && iptables -D OUTPUT -o "$outgoing_iface" $owner -p tcp --dport "$META_PORT" $multiport -j ACCEPT
+  iptables -D OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   unset firewall_temp_state
 }
 
@@ -132,10 +136,8 @@ firewall_temp_remove () {
 # Check that the host supports this and revert to iptables-legacy if needed
 # Can force one or the other using NFTABLES=0/1 env var
 nftables_setup () {
-  # Run an iptables command to see if things are working
   [ -z "$NFTABLES" ] && iptables -L &> /dev/null && return
   [ "$NFTABLES" = "1" ] && return
-  # If not, change to legacy
   echo "$(date): Using legacy iptables backend"
   ln -sf xtables-legacy-multi "$(type -p iptables)"
   ln -sf xtables-legacy-multi "$(type -p iptables-save)"
@@ -149,13 +151,11 @@ nftables_setup () {
   fi
 }
 
-# Handle shutdown behavior
 finish () {
   [ -x "$pre_down_script" ] && run_command "$pre_down_script"
   [ -n "$PRE_DOWN" ] && run_command "$PRE_DOWN"
   [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
   echo "$(date): Shutting down WireGuard"
-  # Remove forwarded port number dump file if requested
   [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
   wg-quick down wg0
   [ -x "$post_down_script" ] && run_command "$post_down_script"
@@ -166,6 +166,8 @@ finish () {
 trap finish SIGTERM SIGINT SIGQUIT
 
 endpoint_monitor () {
+  # To force an unresponsive endpoint for testing:
+  # wg set wg0 listen-port 1234 peer $(wg show | grep peer | cut -F2) endpoint 127.0.0.1:1234
   local failures=0
   while true; do
     if ! ACTIVE_HEALTHCHECKS=1 PORT_FORWARDING=0 /scripts/healthcheck.sh &> /dev/null; then
@@ -178,7 +180,30 @@ endpoint_monitor () {
   done
 }
 
-# All done. Sleep and wait for termination.
+reconnect_rule_add () {
+  ip -4 rule add oif "$outgoing_iface_dns" to "$original_nameserver" dport 53 uidrange "$UID-$UID" lookup main pref 20
+  ip -4 rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+  ip -4 rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+  [ "$META_PORT" -ne 443 ] && ip -4 rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+  for extserver in $original_extservers; do
+    [[ "$extserver" =~ "host" ]] && continue
+    ip -4 rule add to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
+  done
+  reconnect_rule_state=1
+}
+
+reconnect_rule_remove () {
+  for extserver in $original_extservers; do
+    [[ "$extserver" =~ "host" ]] && continue
+    ip -4 rule del to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
+  done
+  ip -4 rule del oif "$outgoing_iface_dns" to "$original_nameserver" dport 53 uidrange "$UID-$UID" lookup main pref 20
+  ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
+  ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
+  [ "$META_PORT" -ne 443 ] && ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+  unset reconnect_rule_state
+}
+
 now_sleep () {
   # If we need to, keep an eye on the port forwarding script and also monitor for unresponsive endpoint
   if [ "$RECONNECT" = "1" ]; then
@@ -202,6 +227,7 @@ now_sleep () {
       unset pf_pid
     fi
     if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
+      echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
       if [ "$PORT_FORWARDING" = "1" ]; then
         [ -n "$pf_pid" ] && kill "$pf_pid"
         unset pf_pid
@@ -213,30 +239,16 @@ now_sleep () {
         fi
       fi
 
-      echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
       [ -n "$PRE_RECONNECT" ] && run_command "$PRE_RECONNECT"
 
-      # Temporarily allow the following to bypass the tunnel
-      # This appears to be needed when curl binds to $outgoing_addr instead of $outgoing_iface, which seems to be needed for --local-port to work
-      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
-      ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
-      [ "$META_PORT" -ne 443 ] && ip rule add from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
-      for extserver in $original_extservers; do
-        [[ "$extserver" =~ "host" ]] && continue
-        ip rule add to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
-      done
+      reconnect_rule_add
       [ "$FIREWALL" = "1" ] && firewall_temp_add
 
-      gen_configs
+      # Bump these up in case of extended downtime
+      CURL_RETRY_DELAY=15 CURL_MAX_TIME=3600 CURL_RETRY=9999 gen_configs
 
       [ "$FIREWALL" = "1" ] && firewall_temp_remove
-      for extserver in $original_extservers; do
-        [[ "$extserver" =~ "host" ]] && continue
-        ip rule del to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
-      done
-      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
-      ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
-      [ "$META_PORT" -ne 443 ] && ip rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport "$META_PORT" uidrange "$UID-$UID" lookup main pref 50
+      reconnect_rule_remove
 
       local new_privkey new_endpoint new_peerpubkey new_ip old_peerpubkey old_ip
       new_privkey=$(grep 'PrivateKey = ' "$wg_conf" | sed 's/PrivateKey = \(.*\)/\1/')
@@ -244,7 +256,7 @@ now_sleep () {
       new_peerpubkey=$(grep 'PublicKey = ' "$wg_conf" | sed 's/PublicKey = \(.*\)/\1/')
       new_ip=$(grep 'Address = ' "$wg_conf" | sed 's/Address = \(.*\)/\1/')
       old_peerpubkey=$(wg show wg0 |grep 'peer: ' | sed 's/peer: \(.*\)/\1/')
-      old_ip=$(ip -o addr show dev wg0 | awk '$3 == "inet" {print $4}')
+      old_ip=$(ip -4 -o addr show dev wg0 | awk '$3 == "inet" {print $4}')
 
       wg set wg0 private-key <(echo "$new_privkey") || fatal_error
       wg set wg0 peer "$new_peerpubkey" endpoint "$new_endpoint" allowed-ips "0.0.0.0/0" || fatal_error
@@ -271,10 +283,10 @@ now_sleep () {
   wait $!
 }
 
-# An error with no recovery logic occured. Either go to sleep or exit.
 fatal_error () {
   echo "$(date): Fatal error"
   [ "$firewall_temp_state" = "1" ] && firewall_temp_remove
+  [ "$reconnect_rule_state" = "1" ] && reconnect_rule_remove
   [ -n "$FATAL_SCRIPT" ] && run_command "$FATAL_SCRIPT"
   [ "$EXIT_ON_FATAL" -eq 1 ] && exit 1
   sleep infinity &
@@ -287,11 +299,11 @@ run_command () {
 }
 
 gen_wgconf () {
-  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt"
-  return $?
+  /scripts/wg-gen.sh -l "$1" -t "$tokenfile" -o "$wg_conf" -k "/RegionsListPubKey.pem" -d "$VPNDNS" -m "$MTU" -c "$pia_cacrt" \
+    | sed --unbuffered -e 's/^/[wg-gen] /'
+  return "${PIPESTATUS[0]}"
 }
 
-# Get a new auth token
 # Unsure how long an auth token will remain valid
 get_auth_token () {
   [ -r "$USER_FILE" ] && echo "$(date): Reading username from $USER_FILE" && USER=$(<"$USER_FILE")
@@ -303,13 +315,8 @@ get_auth_token () {
   if ! token=$(/scripts/pia-auth.sh -u "$USER" -p "$PASS" -n "$META_CN" -i "$META_IP" -o "$META_PORT" -c "$pia_cacrt"); then
     echo "$(date): Failed to acquire new auth token" && fatal_error
   fi
-  echo "$token" > "$tokenfile"
+  echo -n "$token" > "$tokenfile"
   chmod 600 "$tokenfile"
-}
-
-get_outgoing_iface ()
-{
-  ip route get "$1" | head -1 | sed 's/.*dev \([^ ]*\) .*/\1/'
 }
 
 if [[ $(getpcaps 0) == "0: =ep" ]]; then
@@ -326,24 +333,26 @@ nftables_setup
 [ -x "$pre_up_script" ] && run_command "$pre_up_script"
 [ -n "$PRE_UP" ] && run_command "$PRE_UP"
 
-# Explicitly set both interface and dns servers to use so we can run setup requests again bypassing the tunnel if needed once connected
-# Setting the local port also allows more specific temporary firewall rules
-# Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
-# Setting --interface to an address rather than a name seems to be needed for --local-port to work
-# ExtServers contains dns servers used by docker's internal resolver, however this is only available from Docker v26.0
+# This is for the reconnection logic. If we explicitly set both interface and dns for curl requests, then we can add
+# temporary routes later on to repeat the untunneled setup requests if needed without bringing the WireGuard interface down.
 original_nameserver=$(grep -im 1 '^nameserver' /etc/resolv.conf |cut -F2)
-original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
 outgoing_iface=$(ip -4 route show default | awk '/default/ {print $5}' | head -1)
-outgoing_iface_dns=$(get_outgoing_iface "$original_nameserver")
+outgoing_iface_dns=$(ip -4 route get "$original_nameserver" | head -1 | sed 's/.*dev \([^ ]*\) .*/\1/')
+# Setting --interface to an address rather than a name seems to be needed for --local-port to work
 outgoing_addr=$(ip -4 -o addr show "$outgoing_iface" | awk '{print $4}' | cut -d "/" -f 1)
+# ExtServers is present in resolv.conf from Docker 26.0 and exposes the dns servers used by docker's internal
+# resolver when the container has custom dns settings.
+original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServers: \[\(.*\)\]/\1/')
+# Setting the local port also allows more specific temporary routes/firewall rules
+# Re-using a single local port for multiple requests fails so a range is used instead: https://github.com/curl/curl/issues/6288
 curl_local_port_min=12300
 curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface_dns --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
 echo "$(date): curl options: $CURL_OVERRIDE_PARAMS"
+echo "$(date): resolv.conf ExtServers: $original_extservers"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
-# Remove previous forwarded port number dump file if requested and present
 [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
 
 # LOC is ignored and may be blank if ip/cn/port override vars or a dedicated ip are used
@@ -370,13 +379,14 @@ gen_configs() {
       get_auth_token
       gen_wgconf "$location" || fatal_error
     elif [ "$result" -eq 3 ]; then
-      # Location not found
       echo "$(date): Location $location not found"
       continue
     elif [ "$result" -eq 4 ]; then
-      # Registration failed
       echo "$(date): Registration failed"
       continue
+    elif [ "$result" -eq 5 ]; then
+      echo "$(date): Error retrieving server info"
+      fatal_error
     elif [ "$result" -ne 0 ]; then
       echo "$(date): Failed to generate WireGuard config"
       fatal_error
@@ -395,14 +405,11 @@ gen_configs
 
 [ "$FIREWALL" -eq 1 ] && firewall_temp_remove
 
-# Add PersistentKeepalive if KEEPALIVE is set
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
-# Bring up Wireguard interface
 echo "$(date): Bringing up WireGuard interface wg0"
 wg-quick up wg0 || fatal_error
 
-# Print out wg interface info
 echo
 wg
 echo
@@ -421,14 +428,15 @@ effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
 [ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
 if [ "$FIREWALL" -eq 1 ]; then
+  echo "$(date): Firewall enabled: Dropping untunnelled traffic by default"
   # Allow docker network input/output
   for iface in /sys/class/net/*; do
     iface="${iface##*/}"
     [[ "$iface" = @(lo|wg0) ]] && continue
-    docker_network="$(ip -o addr show dev "$iface"|
+    docker_network="$(ip -4 -o addr show dev "$iface"|
             awk '$3 == "inet" {print $4}')"
     [ -z "$docker_network" ] &&  continue
-    echo "$(date): Allowing network access to $docker_network on $iface"
+    echo "$(date): Allowing untunnelled access to $docker_network via $iface"
     iptables -A OUTPUT -o "$iface" --destination "$docker_network" -j ACCEPT
     iptables -A INPUT -i "$iface" --source "$docker_network" -j ACCEPT
   done
@@ -437,13 +445,11 @@ if [ "$FIREWALL" -eq 1 ]; then
   iptables -A OUTPUT -o wg0 -j ACCEPT
   iptables -A OUTPUT -m mark --mark "$(wg show wg0 fwmark)" -j ACCEPT
 
-  echo "$(date): Firewall enabled: Blocking non-WireGuard traffic"
 fi
 
 # Set env var LOCAL_NETWORK=192.168.1.0/24 to allow LAN input/output
 # Accept comma separated as well as space separated list
 if [ -n "$LOCAL_NETWORK" ]; then
-  gaddr=$(ip -4 route show default | awk '/default/ {print $3}' | head -1)
   [ -z "$VPNDNS" ] && pia_dns=$(grep 'DNS = ' "$wg_conf" | sed 's/DNS = \(.*\)/\1/')
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ -n "$pia_dns" ]; then
@@ -452,12 +458,12 @@ if [ -n "$LOCAL_NETWORK" ]; then
         echo "$(date): Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
     fi
     if [ "$FIREWALL" -eq 1 ]; then
-      echo "$(date): Allowing network access to $range on $outgoing_iface"
+      echo "$(date): Allowing untunnelled access to $range via $outgoing_iface"
       iptables -A OUTPUT -o "$outgoing_iface" --destination "$range" -j ACCEPT
       iptables -A INPUT -i "$outgoing_iface" --source "$range" -j ACCEPT
     fi
     echo "$(date): Adding route to $range"
-    ip route add "$range" via "$gaddr"
+    ip -4 rule add to "$range" lookup main pref 10
   done
 fi
 
@@ -470,19 +476,14 @@ if [ -n "$FWD_IFACE" ]; then
   echo "$(date): Forwarding traffic from $FWD_IFACE to VPN"
 fi
 
-# Setup port forwarding if requested and available
 pf_start () {
   [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
   pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
   pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
   if [ "$PORT_FORWARDING" -eq 1 ] && [ -n "$pf_api_ip" ]; then
     echo "$(date): Starting port forward script"
-    # Try to use a persistent port if requested
-    if [ "$PORT_PERSIST" -eq 1 ]; then
-      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 &
-    else
-      /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -f wg0 &
-    fi
+    /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 \
+      | sed --unbuffered -e 's/^/[pf] /' &
     pf_pid=$!
   elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
     echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
@@ -498,6 +499,7 @@ pf_start () {
 # Set env var CYCLE_PORTS to a space-separated list of ports to cycle through
 # Eg: CYCLE_PORTS=50001 50002 50003
 # Optionally set CYCLE_INTERVAL to number of seconds to use each port for. Defaults to 180 (3mins)
+# Could probably remove this - might be better suited to a custom script if needed
 if [ -n "$CYCLE_PORTS" ]; then
   echo "$(date): Changing Wireguard's local port every ${CYCLE_INTERVAL:-180}s"
   while true; do

@@ -45,6 +45,7 @@
 # 2: Auth error
 # 3: Invalid server location
 # 4: Registration failed
+# 5: Error getting server info
 
 [ -n "$DEBUG" ] && set -o xtrace
 
@@ -118,7 +119,7 @@ verify_serverlist ()
     echo "Verified server list"
   else
     echo "Failed to verify server list"
-    fatal_error
+    fatal_error 5
   fi
 }
 
@@ -152,7 +153,7 @@ get_dip_serverinfo ()
   if [ "$(jq -r '.[0].status' <<< "$dip_response")" != "active" ]; then
     echo "$(date): Failed to fetch dedicated ip server info. Response:"
     echo "$dip_response"
-    fatal_error
+    fatal_error 5
   fi
 
   wg_port=1337
@@ -230,7 +231,7 @@ get_wgconf () {
     # shellcheck disable=SC2086
     curl --get --silent --show-error $curl_params \
       --data-urlencode "pubkey=$client_public_key" \
-      --data-urlencode "pt=$(cat "$tokenfile")" \
+      --data-urlencode "pt@$tokenfile" \
       --cacert "$pia_cacert" \
       --resolve "$wg_cn:$wg_port:$wg_ip" \
       "https://$wg_cn:$wg_port/addKey" > "$addkey_response"
@@ -243,6 +244,13 @@ get_wgconf () {
   server_public_key="$(jq -r .server_key "$addkey_response")"
   server_port="$(jq -r .server_port "$addkey_response")"
   pfapi_ip="$(jq -r .server_vip "$addkey_response")"
+  peer_pubkey=$(jq -r .peer_pubkey "$addkey_response")
+
+  if [ "$peer_pubkey" != "$client_public_key" ]; then
+    echo "Server returned an unexpected public key: $peer_pubkey"
+    echo "But our public key is: $client_public_key"
+    fatal_error
+  fi
 
   echo "Generating $wg_out"
 
@@ -284,7 +292,7 @@ CONFF
 
 }
 
-curl_params="$CURL_OVERRIDE_PARAMS --compressed --retry 5 --retry-delay 5 --max-time 120 --connect-timeout 15"
+curl_params="$CURL_OVERRIDE_PARAMS --compressed --retry ${CURL_RETRY:-5} --retry-delay ${CURL_RETRY_DELAY:-5} --max-time ${CURL_MAX_TIME:-120} --connect-timeout 15"
 
 port_forward_avail=0
 list_and_exit=0
