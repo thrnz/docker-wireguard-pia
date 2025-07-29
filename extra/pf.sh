@@ -148,7 +148,7 @@ get_sig () {
     # shellcheck disable=SC2086
     pf_getsig=$(curl --get --silent --show-error $iface_curl --connect-timeout "$curl_connection_timeout" \
       --retry "$curl_retry" --retry-delay "$curl_retry_delay" --max-time "$curl_max_time" \
-      --data-urlencode "token@$tokenfile" \
+      --data-urlencode "token=$(cat "$tokenfile")" \
       $verify \
       "https://$pf_host:19999/getSignature")
   fi
