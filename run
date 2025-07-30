@@ -362,6 +362,9 @@ echo "$(date): resolv.conf ExtServers: $original_extservers"
 # No LOC or specific ip/port/cn supplied
 [ -z "$LOC" ] && /scripts/wg-gen.sh -a && fatal_error
 
+# The script would previously save a trailing newline to $tokenfile which doesn't play well with curl's name@file url-encoding syntax
+[ -r "$tokenfile" ] && [ "$(tail -c 1 "$tokenfile" | wc -l)" -gt 0 ] && sed -zi 's/\n//g' "$tokenfile"
+
 [ ! -r "$tokenfile" ] && get_auth_token
 
 # Generate wg0.conf
