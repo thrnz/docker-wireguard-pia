@@ -11,6 +11,7 @@ RUN apk add --no-cache \
     jq \
     openssl \
     sed \
+    tini \
     wireguard-go \
     wireguard-tools
 
@@ -41,5 +42,7 @@ HEALTHCHECK --interval=1m --timeout=3s --start-period=30s --start-interval=1s --
 
 ARG BUILDINFO=manual
 ENV BUILDINFO=${BUILDINFO}
+
+ENTRYPOINT ["/sbin/tini", "--"]
 
 CMD ["/scripts/run"]
