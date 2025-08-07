@@ -49,7 +49,7 @@
 # An error with no recovery logic occured
 fatal_error () {
   cleanup
-  echo "$(date): Fatal error"
+  echo "Fatal error"
   exit 1
 }
 
@@ -60,7 +60,7 @@ cleanup(){
 # Handle shutdown behavior
 finish () {
   cleanup
-  echo "$(date): Port forward rebinding stopped. The port will likely close soon."
+  echo "Port forward rebinding stopped. The port will likely close soon."
   exit 0
 }
 trap finish SIGTERM SIGINT SIGQUIT
@@ -128,11 +128,11 @@ bind_port () {
       $verify \
       "https://$pf_host:19999/bindPort" 2> "$stderr_tmp")
   if [ "$(jq -r .status <<< "$pf_bind ")" != "OK" ]; then
-    echo "$(date): bindPort error"
-    echo "$(date): Curl error/s:"
+    echo "bindPort error"
+    echo "Curl error/s:"
     cat "$stderr_tmp"
     rm "$stderr_tmp"
-    echo "$(date): API response:"
+    echo "API response:"
     echo "$pf_bind"
     return 1
   fi
@@ -142,7 +142,7 @@ bind_port () {
 
 get_sig () {
   if [ -n "$persist_file" ] && [ -r "$persist_file" ]; then
-    echo "$(date): Reusing previous PF token"
+    echo "Reusing previous PF token"
     pf_getsig=$(cat "$persist_file")
   else
     # shellcheck disable=SC2086
@@ -153,7 +153,7 @@ get_sig () {
       "https://$pf_host:19999/getSignature")
   fi
   if [ "$(jq -r .status <<< "$pf_getsig")" != "OK" ]; then
-    echo "$(date): getSignature error"
+    echo "getSignature error"
     echo "$pf_getsig"
     fatal_error
   fi
@@ -199,10 +199,10 @@ if [ -z "$api_ip" ]; then
   api_ip=$(traceroute -4 -m 1 $iface_tr privateinternetaccess.com | tail -n 1 | awk '{print $2}')
   # Very basic sanity check - make sure it matches 10.x.x.1
   if ! grep -q '10\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.1' <<< "$api_ip"; then
-    echo "$(date): Automatically getting API IP failed."
+    echo "Automatically getting API IP failed."
     fatal_error
   fi
-  echo "$(date): Using $api_ip as API endpoint"
+  echo "Using $api_ip as API endpoint"
 fi
 
 # If we haven't been passed a cn, then use the cn the server is claiming
@@ -211,7 +211,7 @@ if [ -z "$vpn_cn" ]; then
   possible_cn=$(curl $iface_curl --insecure --verbose --head "https://$api_ip:19999" 2>&1 | grep '\\*  subject' | sed 's/.*CN=\(.*\)\;.*/\1/')
   # Sanity check - match 'lowercase123'
   if grep -q '[a-z]*[0-9]\{3\}' <<< "$possible_cn"; then
-    echo "$(date): Using $possible_cn as cn"
+    echo "Using $possible_cn as cn"
     vpn_cn="$possible_cn"
   fi
 fi
@@ -220,7 +220,7 @@ fi
 if [ -n "$vpn_cn" ]; then
   # Get the PIA ca crt if we weren't given it
   if [ -z "$cacert" ]; then
-    echo "$(date): Getting PIA ca cert"
+    echo "Getting PIA ca cert"
     cacert=$(mktemp)
     cacert_istemp=1
     # shellcheck disable=SC2086
@@ -233,10 +233,10 @@ if [ -n "$vpn_cn" ]; then
   fi
   verify="--cacert $cacert --resolve $vpn_cn:19999:$api_ip"
   pf_host="$vpn_cn"
-  echo "$(date): Verifying API requests. CN: $vpn_cn"
+  echo "Verifying API requests. CN: $vpn_cn"
 else
   # For simplicity, use '--insecure' by default, though show a warning
-  echo "$(date): API requests may be insecure. Specify a common name using -n."
+  echo "API requests may be insecure. Specify a common name using -n."
   verify="--insecure"
   pf_host="$api_ip"
 fi
@@ -247,17 +247,17 @@ while true; do
   # Get a new pf token as the previous one will expire soon
   if [ $pf_remaining -lt $pf_minreuse ]; then
     if [ $pf_firstrun -ne 1 ]; then
-      echo "$(date): PF token will expire soon. Getting new one."
+      echo "PF token will expire soon. Getting new one."
       [ -n "$persist_file" ] && [ -w "$persist_file" ] && rm "$persist_file"
     else
-      echo "$(date): Getting PF token"
+      echo "Getting PF token"
       pf_firstrun=0
     fi
     get_sig
     if ! bind_port; then
       # If we attempted to use a previous port and binding failed then discard it and retry
       if [ -n "$persist_file" ] && [ -w "$persist_file" ]; then
-        echo "$(date): Discarding previous PF token and trying again"
+        echo "Discarding previous PF token and trying again"
         rm "$persist_file"
         get_sig
         bind_port || fatal_error
@@ -265,14 +265,14 @@ while true; do
         fatal_error
       fi
     fi
-    echo "$(date): Obtained PF token. Expires at $pf_token_expiry_raw"
-    echo "$(date): Server accepted PF bind"
-    echo "$(date): Forwarding on port $pf_port"
-    echo "$(date): Rebind interval: $pf_bindinterval seconds"
-    [ -n "$portfile" ] && echo "$(date): Port dumped to $portfile" && echo "$pf_port" > "$portfile"
-    echo "$(date): This script should remain running to keep the forwarded port alive"
-    echo "$(date): Press Ctrl+C to exit"
-    [ -n "$post_script" ] && echo "$(date): Running $post_script" && eval "$post_script $pf_port" &
+    echo "Obtained PF token. Expires at $pf_token_expiry_raw"
+    echo "Server accepted PF bind"
+    echo "Forwarding on port $pf_port"
+    echo "Rebind interval: $pf_bindinterval seconds"
+    [ -n "$portfile" ] && echo "Port dumped to $portfile" && echo "$pf_port" > "$portfile"
+    echo "This script should remain running to keep the forwarded port alive"
+    echo "Press Ctrl+C to exit"
+    [ -n "$post_script" ] && echo "Running $post_script" && eval "$post_script $pf_port" &
   fi
   # Rebind at a specific time instead of simply sleeping in case the system itself goes to sleep
   # This prevents a delayed rebind after waking up

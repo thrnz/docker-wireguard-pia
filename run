@@ -138,7 +138,7 @@ firewall_temp_remove () {
 nftables_setup () {
   [ -z "$NFTABLES" ] && iptables -L &> /dev/null && return
   [ "$NFTABLES" = "1" ] && return
-  echo "$(date): Using legacy iptables backend"
+  echo "Using legacy iptables backend"
   ln -sf xtables-legacy-multi "$(type -p iptables)"
   ln -sf xtables-legacy-multi "$(type -p iptables-save)"
   ln -sf xtables-legacy-multi "$(type -p iptables-restore)"
@@ -146,7 +146,7 @@ nftables_setup () {
   ln -sf xtables-legacy-multi "$(type -p ip6tables-save)"
   ln -sf xtables-legacy-multi "$(type -p ip6tables-restore)"
   if ! iptables -L &> /dev/null; then
-    echo "$(date): Error reverting to legacy iptables backend"
+    echo "Error reverting to legacy iptables backend"
     fatal_error
   fi
 }
@@ -155,7 +155,7 @@ finish () {
   [ -x "$pre_down_script" ] && run_command "$pre_down_script"
   [ -n "$PRE_DOWN" ] && run_command "$PRE_DOWN"
   [ "$PORT_FORWARDING" -eq 1 ] && pkill -f 'pf.sh'
-  echo "$(date): Shutting down WireGuard"
+  echo "Shutting down WireGuard"
   [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
   wg-quick down wg0
   [ -x "$post_down_script" ] && run_command "$post_down_script"
@@ -209,7 +209,7 @@ now_sleep () {
   if [ "$RECONNECT" = "1" ]; then
     endpoint_monitor &
     local endpoint_monitor_pid="$!"
-    echo "$(date): Started endpoint monitor"
+    echo "Started endpoint monitor"
   fi
 
   while [ -n "$pf_pid$endpoint_monitor_pid" ]; do
@@ -219,15 +219,15 @@ now_sleep () {
     # Check which pid terminated
     if [ -n "$pf_pid" ] && ! kill -0 "$pf_pid" 2> /dev/null; then
       if [ "$PORT_FORWARDING" = "1" ] && [ "$PORT_FATAL" = "1" ] && [ $result -ne 0 ];then
-        echo "$(date): Port forwarding script failed"
+        echo "Port forwarding script failed"
         [ -n "$endpoint_monitor_pid" ] && kill "$endpoint_monitor_pid"
         fatal_error
       fi
-      echo "$(date): Port forwarding script closed"
+      echo "Port forwarding script closed"
       unset pf_pid
     fi
     if [ -n "$endpoint_monitor_pid" ] && ! kill -0 "$endpoint_monitor_pid" 2> /dev/null && [ "$result" -ne 0 ]; then
-      echo "$(date): Unresponsive endpoint detected. Regenerating WireGuard config"
+      echo "Unresponsive endpoint detected. Regenerating WireGuard config"
       if [ "$PORT_FORWARDING" = "1" ]; then
         [ -n "$pf_pid" ] && kill "$pf_pid"
         unset pf_pid
@@ -267,7 +267,7 @@ now_sleep () {
       # Adding the new address first before removing the old one seems to be needed
       ip -4 address add "$new_ip" dev wg0 || fatal_error
       ip -4 address del "$old_ip" dev wg0 || fatal_error
-      echo "$(date): Updated WireGuard endpoint"
+      echo "Updated WireGuard endpoint"
       echo; wg show wg0; echo
 
       [ -n "$POST_RECONNECT" ] && run_command "$POST_RECONNECT"
@@ -284,7 +284,7 @@ now_sleep () {
 }
 
 fatal_error () {
-  echo "$(date): Fatal error"
+  echo "Fatal error"
   [ "$firewall_temp_state" = "1" ] && firewall_temp_remove
   [ "$reconnect_rule_state" = "1" ] && reconnect_rule_remove
   [ -n "$FATAL_SCRIPT" ] && run_command "$FATAL_SCRIPT"
@@ -294,7 +294,7 @@ fatal_error () {
 }
 
 run_command () {
-  echo "$(date): Running: $1"
+  echo "Running: $1"
   eval "$1"
 }
 
@@ -306,27 +306,27 @@ gen_wgconf () {
 
 # Unsure how long an auth token will remain valid
 get_auth_token () {
-  [ -r "$USER_FILE" ] && echo "$(date): Reading username from $USER_FILE" && USER=$(<"$USER_FILE")
-  [ -r "$PASS_FILE" ] && echo "$(date): Reading password from $PASS_FILE" && PASS=$(<"$PASS_FILE")
-  [ -z "$PASS" ] && echo "$(date): PIA password not set. Unable to retrieve new auth token." && fatal_error
-  [ -z "$USER" ] && echo "$(date): PIA username not set. Unable to retrieve new auth token." && fatal_error
-  echo "$(date): Generating auth token"
+  [ -r "$USER_FILE" ] && echo "Reading username from $USER_FILE" && USER=$(<"$USER_FILE")
+  [ -r "$PASS_FILE" ] && echo "Reading password from $PASS_FILE" && PASS=$(<"$PASS_FILE")
+  [ -z "$PASS" ] && echo "PIA password not set. Unable to retrieve new auth token." && fatal_error
+  [ -z "$USER" ] && echo "PIA username not set. Unable to retrieve new auth token." && fatal_error
+  echo "Generating auth token"
   local token
   if ! token=$(/scripts/pia-auth.sh -u "$USER" -p "$PASS" -n "$META_CN" -i "$META_IP" -o "$META_PORT" -c "$pia_cacrt"); then
-    echo "$(date): Failed to acquire new auth token" && fatal_error
+    echo "Failed to acquire new auth token" && fatal_error
   fi
   echo -n "$token" > "$tokenfile"
   chmod 600 "$tokenfile"
 }
 
 if [[ $(getpcaps 0) == "0: =ep" ]]; then
-  echo "$(date): The container appears to be running with elevated privileges. The container generally only requires the NET_ADMIN capability to run."
+  echo "The container appears to be running with elevated privileges. The container generally only requires the NET_ADMIN capability to run."
 elif ! getpcaps 0 | grep cap_net_admin >& /dev/null; then
-  echo "$(date): The container requires the NET_ADMIN capability to run. See the README for more info."
+  echo "The container requires the NET_ADMIN capability to run. See the README for more info."
   fatal_error
 fi
 
-echo "$(date): Container build info: $BUILDINFO"
+echo "Container build info: $BUILDINFO"
 
 nftables_setup
 
@@ -348,8 +348,8 @@ original_extservers=$(grep '# ExtServers:' /etc/resolv.conf | sed 's/# ExtServer
 curl_local_port_min=12300
 curl_local_port_max=12310
 export CURL_OVERRIDE_PARAMS="--interface $outgoing_addr --dns-interface $outgoing_iface_dns --dns-servers $original_nameserver --local-port $curl_local_port_min-$curl_local_port_max"
-echo "$(date): curl options: $CURL_OVERRIDE_PARAMS"
-echo "$(date): resolv.conf ExtServers: $original_extservers"
+echo "curl options: $CURL_OVERRIDE_PARAMS"
+echo "resolv.conf ExtServers: $original_extservers"
 
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
@@ -382,16 +382,16 @@ gen_configs() {
       get_auth_token
       gen_wgconf "$location" || fatal_error
     elif [ "$result" -eq 3 ]; then
-      echo "$(date): Location $location not found"
+      echo "Location $location not found"
       continue
     elif [ "$result" -eq 4 ]; then
-      echo "$(date): Registration failed"
+      echo "Registration failed"
       continue
     elif [ "$result" -eq 5 ]; then
-      echo "$(date): Error retrieving server info"
+      echo "Error retrieving server info"
       fatal_error
     elif [ "$result" -ne 0 ]; then
-      echo "$(date): Failed to generate WireGuard config"
+      echo "Failed to generate WireGuard config"
       fatal_error
     fi
     gen_success=1
@@ -399,7 +399,7 @@ gen_configs() {
   done
 
   if [ "$gen_success" -eq 0 ]; then
-    echo "$(date): Failed to generate WireGuard config for the selected location/s: $LOC"
+    echo "Failed to generate WireGuard config for the selected location/s: $LOC"
     fatal_error
   fi
 }
@@ -410,28 +410,28 @@ gen_configs
 
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
-echo "$(date): Bringing up WireGuard interface wg0"
+echo "Bringing up WireGuard interface wg0"
 wg-quick up wg0 || fatal_error
 
 echo
 wg
 echo
 
-echo "$(date): WireGuard successfully started"
+echo "WireGuard successfully started"
 
 # Show a warning if src_valid_mark=1 needs setting, otherwise incoming packets will be dropped
 effective_rp_filter="$(sysctl -n net.ipv4.conf.all.rp_filter)"
 [ "$(sysctl -n net.ipv4.conf.default.rp_filter)" -gt "$effective_rp_filter" ] && effective_rp_filter="$(sysctl -n net.ipv4.conf.default.rp_filter)"
 [ "$effective_rp_filter" -eq 1 ] && [ "$(sysctl -n net.ipv4.conf.all.src_valid_mark)" -ne 1 ] && \
-  echo "$(date): Warning: Container requires net.ipv4.conf.all.src_valid_mark=1 sysctl to be set when rp_filter is set to strict. See the README for more info."
+  echo "Warning: Container requires net.ipv4.conf.all.src_valid_mark=1 sysctl to be set when rp_filter is set to strict. See the README for more info."
 
 # Add qdisc to wg0 if requested
 # eg: QDISC=cake bandwidth 20Mbit
 # shellcheck disable=SC2086
-[ -n "$QDISC" ] && echo "$(date): Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
+[ -n "$QDISC" ] && echo "Adding qdisc to wg0: $QDISC" && tc qdisc add root dev wg0 $QDISC && tc -statistics qdisc show dev wg0
 
 if [ "$FIREWALL" -eq 1 ]; then
-  echo "$(date): Firewall enabled: Dropping untunnelled traffic by default"
+  echo "Firewall enabled: Dropping untunnelled traffic by default"
   # Allow docker network input/output
   for iface in /sys/class/net/*; do
     iface="${iface##*/}"
@@ -439,7 +439,7 @@ if [ "$FIREWALL" -eq 1 ]; then
     docker_network="$(ip -4 -o addr show dev "$iface"|
             awk '$3 == "inet" {print $4}')"
     [ -z "$docker_network" ] &&  continue
-    echo "$(date): Allowing untunnelled access to $docker_network via $iface"
+    echo "Allowing untunnelled access to $docker_network via $iface"
     iptables -A OUTPUT -o "$iface" --destination "$docker_network" -j ACCEPT
     iptables -A INPUT -i "$iface" --source "$docker_network" -j ACCEPT
   done
@@ -457,15 +457,15 @@ if [ -n "$LOCAL_NETWORK" ]; then
   for range in ${LOCAL_NETWORK//,/ }; do
     if [ -n "$pia_dns" ]; then
       grepcidr "$range" <(echo "$pia_dns") >/dev/null && \
-        echo "$(date): Warning: LOCAL_NETWORK range $range overlaps with PIA's default dns servers ($pia_dns)" && \
-        echo "$(date): Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
+        echo "Warning: LOCAL_NETWORK range $range overlaps with PIA's default dns servers ($pia_dns)" && \
+        echo "Consider setting custom dns servers using the VPNDNS env var if there are name resolution issues"
     fi
     if [ "$FIREWALL" -eq 1 ]; then
-      echo "$(date): Allowing untunnelled access to $range via $outgoing_iface"
+      echo "Allowing untunnelled access to $range via $outgoing_iface"
       iptables -A OUTPUT -o "$outgoing_iface" --destination "$range" -j ACCEPT
       iptables -A INPUT -i "$outgoing_iface" --source "$range" -j ACCEPT
     fi
-    echo "$(date): Adding route to $range"
+    echo "Adding route to $range"
     ip -4 rule add to "$range" lookup main pref 10
   done
 fi
@@ -476,7 +476,7 @@ if [ -n "$FWD_IFACE" ]; then
   iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
   iptables -A FORWARD -i wg0 -o "$FWD_IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -A FORWARD -i "$FWD_IFACE" -o wg0 -j ACCEPT
-  echo "$(date): Forwarding traffic from $FWD_IFACE to VPN"
+  echo "Forwarding traffic from $FWD_IFACE to VPN"
 fi
 
 pf_start () {
@@ -484,12 +484,12 @@ pf_start () {
   pf_api_ip=$(grep '#pf api' "$wg_conf"| sed 's/#pf api ip: \(.*\)/\1/')
   pf_cn=$(grep '#cn: ' "$wg_conf"| sed 's/#cn: \(.*\)/\1/')
   if [ "$PORT_FORWARDING" -eq 1 ] && [ -n "$pf_api_ip" ]; then
-    echo "$(date): Starting port forward script"
+    echo "Starting port forward script"
     /scripts/pf.sh -t "$tokenfile" -i "$pf_api_ip" -n "$pf_cn" -p "$portfile" -c "$pia_cacrt" -s "/scripts/pf_success.sh" -r "$pf_persistfile" -f wg0 \
       | sed --unbuffered -e 's/^/[pf] /' &
     pf_pid=$!
   elif [ "$PORT_FORWARDING" -eq 1 ] && [ -z "$pf_api_ip" ]; then
-    echo "$(date): Warning: Port forwarding is unavailable on this server. Try a different location."
+    echo "Warning: Port forwarding is unavailable on this server. Try a different location."
   fi
 }
 
@@ -504,7 +504,7 @@ pf_start () {
 # Optionally set CYCLE_INTERVAL to number of seconds to use each port for. Defaults to 180 (3mins)
 # Could probably remove this - might be better suited to a custom script if needed
 if [ -n "$CYCLE_PORTS" ]; then
-  echo "$(date): Changing Wireguard's local port every ${CYCLE_INTERVAL:-180}s"
+  echo "Changing Wireguard's local port every ${CYCLE_INTERVAL:-180}s"
   while true; do
     for port in $CYCLE_PORTS; do
       wg set wg0 listen-port "$port"
