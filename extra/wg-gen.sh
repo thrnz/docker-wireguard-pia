@@ -126,7 +126,7 @@ verify_serverlist ()
 get_dip_serverinfo ()
 {
   if [ -n "$META_IP" ] && [ -n "$META_CN" ] && [ -n "$META_PORT" ]; then
-    echo "$(date): Fetching dedicated ip server info via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
+    echo "Fetching dedicated ip server info via meta server: ip: $META_IP, cn: $META_CN, port: $META_PORT"
     # shellcheck disable=SC2086
     dip_response=$(curl --silent --show-error $curl_params --location --request POST \
     "https://$META_CN:$META_PORT/api/client/v2/dedicated_ip" \
@@ -137,7 +137,7 @@ get_dip_serverinfo ()
       "tokens":["'"$PIA_DIP_TOKEN"'"]
     }')
   else
-    echo "$(date): Fetching dedicated ip server info"
+    echo "Fetching dedicated ip server info"
     # shellcheck disable=SC2086
     dip_response=$(curl --silent --show-error $curl_params --location --request POST \
     'https://www.privateinternetaccess.com/api/client/v2/dedicated_ip' \
@@ -151,7 +151,7 @@ get_dip_serverinfo ()
   [ "$dip_response" == "HTTP Token: Access denied." ] && echo "Auth failed" && fatal_error 2
 
   if [ "$(jq -r '.[0].status' <<< "$dip_response")" != "active" ]; then
-    echo "$(date): Failed to fetch dedicated ip server info. Response:"
+    echo "Failed to fetch dedicated ip server info. Response:"
     echo "$dip_response"
     fatal_error 5
   fi
@@ -160,7 +160,7 @@ get_dip_serverinfo ()
   wg_cn=$(jq -r '.[0].cn' <<< "$dip_response")
   wg_ip=$(jq -r '.[0].ip' <<< "$dip_response")
 
-  echo "$(date): Dedicated ip: $wg_ip, cn: $wg_cn"
+  echo "Dedicated ip: $wg_ip, cn: $wg_cn"
 
   # PIA's standalone scripts seem to assume port forwarding is available everywhere apart from the us
   [[ $(jq -r '.[0].id' <<< "$dip_response") != us_* ]] && port_forward_avail=1
@@ -201,13 +201,13 @@ get_servers() {
 get_wgconf () {
   client_private_key="$(wg genkey)"
   if ! client_public_key=$(wg pubkey <<< "$client_private_key"); then
-    echo "$(date) Error generating Wireguard key pair" && fatal_error
+    echo "Error generating Wireguard key pair" && fatal_error
   fi
 
   # https://github.com/pia-foss/desktop/blob/754080ce15b6e3555321dde2dcfd0c21ec25b1a9/daemon/src/wireguardmethod.cpp#L1150
 
   if [ -z "$pia_cacert" ]; then
-    echo "$(date) Fetching PIA ca cert"
+    echo "Fetching PIA ca cert"
     pia_cacert_tmp=$(mktemp)
     # shellcheck disable=SC2086
     if ! curl --get --silent --show-error $curl_params --output "$pia_cacert_tmp" "https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt"; then
