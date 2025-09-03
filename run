@@ -240,6 +240,7 @@ now_sleep () {
       fi
 
       [ -n "$PRE_RECONNECT" ] && run_command "$PRE_RECONNECT"
+      [ -r "$LOC_FILE" ] && LOC=$(cat "$LOC_FILE")
 
       reconnect_rule_add
       [ "$FIREWALL" = "1" ] && firewall_temp_add
@@ -354,6 +355,8 @@ echo "resolv.conf ExtServers: $original_extservers"
 [ "$FIREWALL" -eq 1 ] && firewall_init
 
 [ "$PORT_FILE_CLEANUP" -eq 1 ] && [ -w "$portfile" ] && rm "$portfile"
+
+[ -r "$LOC_FILE" ] && LOC=$(cat "$LOC_FILE")
 
 # LOC is ignored and may be blank if ip/cn/port override vars or a dedicated ip are used
 [ -n "$PIA_CN" ] && [ -n "$PIA_IP" ] && [ -n "$PIA_PORT" ] && LOC="manual"
