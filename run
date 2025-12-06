@@ -410,6 +410,10 @@ gen_configs
 
 [ "$KEEPALIVE" -gt 0 ] && echo "PersistentKeepalive = $KEEPALIVE" >> "$wg_conf"
 
+# Let openresolv overwrite Docker's generated resolv.conf
+# https://github.com/NetworkConfiguration/openresolv/commit/0fdbfd03b554b82a8d5847d5fbecfa2814cf2499
+[ "${VPNDNS}" != "0" ] && resolvconf -u
+
 echo "Bringing up WireGuard interface wg0"
 wg-quick up wg0 || fatal_error
 
