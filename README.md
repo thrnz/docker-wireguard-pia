@@ -15,7 +15,7 @@ The following ENV vars are required:
 
 | ENV Var | Function |
 |-------|------|
-|```LOC=swiss```|Location id to connect to. Available server location ids are listed [here](https://serverlist.piaservers.net/vpninfo/servers/v6). Example values include ```us_california```, ```ca_ontario```, and ```swiss```. If left empty the container will print out all currently available location ids and exit. <br />Multiple ids can be listed, separated by either a space or a comma, and are used as fallback if the initial endpoint registration fails.
+|```LOC=swiss```|Location id to connect to. Available server location ids are listed [here](https://serverlist.piaservers.net/vpninfo/servers/v6). Example values include ```us_california```, ```ca_ontario```, and ```swiss```. If left empty the container will print out all currently available location ids and exit. <br />Multiple ids can be listed, separated by either a space or a comma, and are used as fallback if the initial endpoint registration fails. <br />Not required if using ```AUTO_SELECT_REGION=1```.
 |```USER=xxxxxxxx```|PIA username
 |```PASS=xxxxxxxx```|PIA password
 
@@ -23,6 +23,10 @@ The rest are optional:
 
 | ENV Var | Function |
 |-------|------|
+|```AUTO_SELECT_REGION=0/1```|Automatically select the lowest latency region. When enabled, ```LOC``` is not required. Defaults to 0 if not specified.
+|```MAX_LATENCY=0.05```|Maximum acceptable latency in seconds when auto-selecting a region. Regions responding slower than this are excluded. Defaults to 0.05 (50ms) if not specified. Only used when ```AUTO_SELECT_REGION=1```.
+|```FALLBACK_REGION=uk```|Region to use if auto-selection fails (eg. no regions respond within ```MAX_LATENCY```). Recommended when using ```AUTO_SELECT_REGION=1```.
+|```AUTO_REGION_FILE=/pia-shared/region.dat```|If set, the auto-selected region id is written to this file for reference by other containers or scripts.
 |```LOCAL_NETWORK=192.168.1.0/24```|Whether to route and allow input/output traffic to the LAN. LAN access will be unavailable if not specified. Multiple ranges can be specified, separated by a comma or space. Note that there may be DNS issues if this overlaps with PIA's default DNS servers (`10.0.0.243` and `10.0.0.242` as of July 2022). Custom DNS servers can be defined using `VPNDNS` (see below) if this is an issue.
 |```KEEPALIVE=25```|If defined, PersistentKeepalive will be set to this in the WireGuard config. This can be used to ensure incoming packets on an idle link aren't lost when behind NAT. The [WireGuard QuickStart guide](https://www.wireguard.com/quickstart/) suggests a value of 25 if needed. By default this remains unset.
 |```MTU=1420```|This can be used to override ```wg-quick```'s automatic MTU setting on the Wireguard interface if needed. By default this remains unset (ie. let ```wg-quick``` choose).
