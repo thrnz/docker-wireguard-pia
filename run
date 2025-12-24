@@ -267,6 +267,10 @@ now_sleep () {
       # Adding the new address first before removing the old one seems to be needed
       ip -4 address add "$new_ip" dev wg0 || fatal_error
       ip -4 address del "$old_ip" dev wg0 || fatal_error
+
+      iptables -t raw -A PREROUTING -d "${new_ip}"/32 ! -i wg0 -m addrtype ! --src-type LOCAL -m comment --comment "wg-quick(8) rule for wg0" -j DROP
+      iptables -t raw -D PREROUTING -d "${old_ip}" ! -i wg0 -m addrtype ! --src-type LOCAL -m comment --comment "wg-quick(8) rule for wg0" -j DROP
+
       echo "Updated WireGuard endpoint"
       echo; wg show wg0; echo
 
