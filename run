@@ -1,6 +1,6 @@
 #!/bin/bash
 
-[ -n "$DEBUG" ] && set -o xtrace
+[ -n "$DEBUG" ] && echo "*** DEBUG env var is set. This shows everything Bash does unsanitized, and may include sensitive information. Use with caution! ***" && set -o xtrace
 
 # Check and/or set default options
 # Should be 0/1
