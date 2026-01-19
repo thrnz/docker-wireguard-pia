@@ -2,6 +2,7 @@ FROM alpine:3.23
 
 RUN apk add --no-cache \
     bash \
+    bc \
     ca-certificates \
     curl \
     grepcidr3 \
@@ -28,7 +29,8 @@ COPY ./RegionsListPubKey.pem /RegionsListPubKey.pem
 
 WORKDIR /scripts
 
-COPY run healthcheck.sh pf_success.sh ./extra/pf.sh ./extra/pia-auth.sh ./extra/wg-gen.sh /scripts/
+# Add the new region selector script
+COPY run healthcheck.sh pf_success.sh ./extra/region-selector.sh ./extra/pf.sh ./extra/pia-auth.sh ./extra/wg-gen.sh  /scripts/
 RUN chmod 755 /scripts/*
 
 # Store persistent PIA stuff here (auth token, server list)
