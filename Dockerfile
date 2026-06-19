@@ -10,6 +10,7 @@ RUN apk add --no-cache \
     libcap-utils \
     jq \
     openssl \
+    patch \
     sed \
     tini \
     wireguard-go \
@@ -17,8 +18,9 @@ RUN apk add --no-cache \
 
 # Modify wg-quick so it doesn't die without --privileged
 # Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
-# To avoid confusion, also suppress the error message that displays even when pre-set to 1 on container creation
-RUN sed -i 's/cmd sysctl.*/set +e \&\& sysctl -q net.ipv4.conf.all.src_valid_mark=1 \&> \/dev\/null \&\& set -e/' /usr/bin/wg-quick
+ADD ./patches/wg-quick.diff /tmp/wg-quick.diff
+RUN patch /usr/bin/wg-quick < /tmp/wg-quick.diff && \
+	rm /tmp/wg-quick.diff
 
 ADD https://raw.githubusercontent.com/pia-foss/desktop/master/daemon/res/ca/rsa_4096.crt /rsa_4096.crt
 
