@@ -16,8 +16,9 @@ RUN apk add --no-cache \
     wireguard-go \
     wireguard-tools
 
-# Modify wg-quick so it doesn't die without --privileged
-# Set net.ipv4.conf.all.src_valid_mark=1 on container creation using --sysctl if required instead
+# wg-quick patches:
+# - don't fail attempting to modify src_valid_mark without --privileged
+# - Add ALLOW_MISSING_IPTABLES_RULES env var
 ADD ./patches/wg-quick.diff /tmp/wg-quick.diff
 RUN patch /usr/bin/wg-quick < /tmp/wg-quick.diff && \
 	rm /tmp/wg-quick.diff
