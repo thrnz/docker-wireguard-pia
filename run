@@ -419,7 +419,20 @@ gen_configs
 [ "${VPNDNS}" != "0" ] && resolvconf -u
 
 echo "Bringing up WireGuard interface wg0"
-wg-quick up wg0 || fatal_error
+if ! wg-quick up wg0; then
+  echo "If the host is missing iptables modules required by wg-quick, running with the ALLOW_MISSING_IPTABLES_RULES=1 env var set will treat this as a non-fatal error. See the README for more info."
+  fatal_error
+fi
+
+iptables_unique () {
+  iptables -C "$@" 2>/dev/null || iptables -I "$@"
+}
+
+if [ "$ALLOW_MISSING_IPTABLES_RULES" = "1" ]; then
+  # Depending on which extension was missing, it might still be possible to add some of the missing wg-quick rules
+  iptables_unique POSTROUTING -t mangle -m mark --mark "$(wg show wg0 fwmark)" -p udp -j CONNMARK --save-mark -m comment --comment "wg-quick(8) rule for wg0"
+  iptables_unique PREROUTING -t mangle  -p udp -j CONNMARK --restore-mark -m comment --comment "wg-quick(8) rule for wg0"
+fi
 
 echo
 wg
