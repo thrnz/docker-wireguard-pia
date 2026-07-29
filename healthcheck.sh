@@ -15,7 +15,7 @@ if [ "$ACTIVE_HEALTHCHECKS" = "1" ]; then
     success=0
     # Accept comma separated as well as space separated list
     for target in ${HEALTHCHECK_PING_TARGET//,/ }; do
-        ping -c 1 -w "$HEALTHCHECK_PING_TIMEOUT" -I wg0 "$target" && success=1 && break
+        timeout "$HEALTHCHECK_PING_TIMEOUT" ping -c 1 -I wg0 "$target" && success=1 && break
     done
     [ "$success" = "1" ] || exit 1
 fi
