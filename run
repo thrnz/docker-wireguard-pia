@@ -16,15 +16,59 @@
 [[ "$MONITOR_INTERVAL" =~ ^[0-9]+$ ]] || export MONITOR_INTERVAL=60
 [[ "$MONITOR_RETRIES" =~ ^[0-9]+$ ]] || export MONITOR_RETRIES=3
 
+# ========== NEW: AUTO REGION SELECTION ==========
+# Check for auto-selection flag
+[[ "$AUTO_SELECT_REGION" =~ ^[0-1]$ ]] || AUTO_SELECT_REGION=0
+
+# Auto-select region if enabled and LOC is not explicitly set
+if [[ "$AUTO_SELECT_REGION" == "1" ]] && [[ -z "$LOC" ]]; then
+  echo "AUTO_SELECT_REGION enabled, finding best region..."
+  
+  # Default max latency
+  [[ "$MAX_LATENCY" =~ ^[0-9.]+$ ]] || MAX_LATENCY=0.05
+  
+  # Determine if we need port forwarding regions only
+  require_pf="0"
+  [[ "$PORT_FORWARDING" == "1" ]] && require_pf="1"
+  
+  # Source the region selector script
+  source /scripts/region-selector.sh
+  
+  # Call the selection function
+  selected_region=$(select_best_region "$MAX_LATENCY" "$require_pf")
+  
+  if [[ $? -eq 0 ]] && [[ -n "$selected_region" ]]; then
+    export LOC="$selected_region"
+    echo "Auto-selected region: $LOC"
+    
+    # Optionally save to file for reference
+    if [[ -n "$AUTO_REGION_FILE" ]]; then
+      echo "$LOC" > "$AUTO_REGION_FILE"
+    fi
+  else
+    echo "WARNING: Auto-selection failed. Using fallback region."
+    # Check if a fallback is specified
+    if [[ -n "$FALLBACK_REGION" ]]; then
+      export LOC="$FALLBACK_REGION"
+      echo "Using fallback region: $LOC"
+    else
+      echo "ERROR: No fallback region specified. Set FALLBACK_REGION or disable AUTO_SELECT_REGION."
+      exit 1
+    fi
+  fi
+elif [[ "$AUTO_SELECT_REGION" == "1" ]] && [[ -n "$LOC" ]]; then
+  echo "AUTO_SELECT_REGION is enabled but LOC is already set to '$LOC'.  Using explicit LOC value."
+fi
+
 # Maybe also check the following. They are all blank by default.
-# LOCAL_NETWORK=
-# PIA_CN=
-# PIA_IP=
-# PIA_PORT=
-# PORT_FILE=
-# QDISC=
-# VPNDNS=
-# MTU=
+# LOCAL_NETWORK 
+# PIA_CNM
+# PIA_IP
+# PIA_PORT
+# PORT_FILE
+# QDISC
+# VPNDNS 
+# MTUa
 
 configdir="/pia"
 tokenfile="$configdir/.token"
