@@ -258,18 +258,23 @@ now_sleep () {
       old_peerpubkey=$(wg show wg0 |grep 'peer: ' | sed 's/peer: \(.*\)/\1/')
       old_ip=$(ip -4 -o addr show dev wg0 | awk '$3 == "inet" {print $4}')
 
-      wg set wg0 private-key <(echo "$new_privkey") || fatal_error
-      wg set wg0 peer "$new_peerpubkey" endpoint "$new_endpoint" allowed-ips "0.0.0.0/0" || fatal_error
+      wg set wg0 private-key <(echo "${new_privkey}") || fatal_error
+      wg set wg0 peer "${new_peerpubkey}" endpoint "${new_endpoint}" allowed-ips "0.0.0.0/0" || fatal_error
       if [ "$KEEPALIVE" -gt 0 ]; then
-        wg set wg0 peer "$new_peerpubkey" persistent-keepalive "$KEEPALIVE" || fatal_error
+        wg set wg0 peer "${new_peerpubkey}" persistent-keepalive "${KEEPALIVE}" || fatal_error
       fi
-      wg set wg0 peer "$old_peerpubkey" remove || fatal_error
-      # Adding the new address first before removing the old one seems to be needed
-      ip -4 address add "$new_ip" dev wg0 || fatal_error
-      ip -4 address del "$old_ip" dev wg0 || fatal_error
+      # During testing the key sometimes stays unchanged, possibly only when regenerated in quick succession
+      if [ "${new_peerpubkey}" != "${old_peerpubkey}" ]; then
+        wg set wg0 peer "${old_peerpubkey}" remove || fatal_error
+      fi
+      if [ "${new_ip}" != "${old_ip}" ]; then
+        # Adding the new address first before removing the old one seems to be needed
+        ip -4 address add "${new_ip}" dev wg0 || fatal_error
+        ip -4 address del "${old_ip}" dev wg0 || fatal_error
+        iptables -t raw -A PREROUTING -d "${new_ip}"/32 ! -i wg0 -m addrtype ! --src-type LOCAL -m comment --comment "wg-quick(8) rule for wg0" -j DROP
+        iptables -t raw -D PREROUTING -d "${old_ip}" ! -i wg0 -m addrtype ! --src-type LOCAL -m comment --comment "wg-quick(8) rule for wg0" -j DROP
+      fi
 
-      iptables -t raw -A PREROUTING -d "${new_ip}"/32 ! -i wg0 -m addrtype ! --src-type LOCAL -m comment --comment "wg-quick(8) rule for wg0" -j DROP
-      iptables -t raw -D PREROUTING -d "${old_ip}" ! -i wg0 -m addrtype ! --src-type LOCAL -m comment --comment "wg-quick(8) rule for wg0" -j DROP
 
       echo "Updated WireGuard endpoint"
       echo; wg show wg0; echo
