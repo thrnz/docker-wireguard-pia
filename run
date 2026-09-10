@@ -391,7 +391,7 @@ gen_configs() {
       get_auth_token
       gen_wgconf "$location" || fatal_error
     elif [ "$result" -eq 3 ]; then
-      echo "Location $location not found"
+      echo "Location $location either doesn't exist or doesn't contain any available WireGuard servers"
       continue
     elif [ "$result" -eq 4 ]; then
       echo "Registration failed"
