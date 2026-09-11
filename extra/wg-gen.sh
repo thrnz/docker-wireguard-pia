@@ -46,6 +46,7 @@
 # 3: Invalid server location
 # 4: Registration failed
 # 5: Error getting server info
+# 6: Server location exists but doesn't support WireGuard
 
 [ -n "$DEBUG" ] && set -o xtrace
 
@@ -184,11 +185,16 @@ get_servers() {
 
   [ "$list_and_exit" -eq 1 ] && echo "Available location ids:" && jq '.regions | .[] | select(.servers.wg) | {name, id, port_forward}' "$servers_json" && cleanup && exit 0
 
+  if ! jq -e '.regions | .[] | select(.id=="'"$location"'")' "$servers_json" &> /dev/null; then
+    echo "Server id \"$location\" not found in serverlist"
+    fatal_error 3
+  fi
+
   # Some locations have multiple servers available. Pick a random one.
   totalservers=$(jq -r '.regions | .[] | select(.id=="'"$location"'") | .servers.wg | length' "$servers_json")
   if ! [[ "$totalservers" =~ ^[0-9]+$ ]] || [ "$totalservers" -eq 0 ] 2>/dev/null; then
-    echo "Location \"$location\" not found. Run with -a to list valid servers."
-    fatal_error 3
+    echo "Server id \"$location\" exists in serverlist but doesn't currently support WireGuard"
+    fatal_error 6
   fi
   serverindex=$(( RANDOM % totalservers))
   wg_cn=$(jq -r '.regions | .[] | select(.id=="'"$location"'") | .servers.wg | .['$serverindex'].cn' "$servers_json")
