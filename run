@@ -189,6 +189,8 @@ reconnect_rule_add () {
     [[ "$extserver" =~ "host" ]] && continue
     ip -4 rule add to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
   done
+  # Fallback for older versions of Docker
+  [ -z "$original_extservers" ] && ip -4 rule add dport 53 uidrange "$UID-$UID" lookup main pref 60
   reconnect_rule_state=1
 }
 
@@ -197,6 +199,7 @@ reconnect_rule_remove () {
     [[ "$extserver" =~ "host" ]] && continue
     ip -4 rule del to "$extserver" dport 53 uidrange "$UID-$UID" lookup main pref 60
   done
+  [ -z "$original_extservers" ] && ip -4 rule del dport 53 uidrange "$UID-$UID" lookup main pref 60
   ip -4 rule del oif "$outgoing_iface_dns" to "$original_nameserver" dport 53 uidrange "$UID-$UID" lookup main pref 20
   ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 443 uidrange "$UID-$UID" lookup main pref 30
   ip -4 rule del from "$outgoing_addr" sport "$curl_local_port_min-$curl_local_port_max" dport 1337 uidrange "$UID-$UID" lookup main pref 40
